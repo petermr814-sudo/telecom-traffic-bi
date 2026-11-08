@@ -1,0 +1,26 @@
+# 依赖与构建产物
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# 本地环境变量（示例文件 .env.example 会提交）
+.env
+.env.local
+.env.*.local
+*.local
+
+# 日志与缓存
+*.log
+pnpm-debug.log*
+coverage/
+.cache/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 编辑器
+.vscode/
+.idea/
