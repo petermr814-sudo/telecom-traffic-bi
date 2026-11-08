@@ -110,12 +110,14 @@ export function dotHeatOption(values: number[][], hours: string[], days: string[
         const maxR = Math.min(width * .38, height * .36)
         const radius = maxR * Math.sqrt(value / max)
         const opacity = 1 - .55 * anim.maskAlpha * Math.min(1, Math.abs(d - anim.maskRow))
-        const children: any[] = []
-        if (anim.maskAlpha > 0) {
-          const maskY = heatBandY(api, anim.maskRow, lastD)
-          children.push({ type: 'rect', shape: { x: x - width / 2, y: maskY - height / 2, width, height }, style: { fill: `rgba(51,78,172,${(.045 * anim.maskAlpha).toFixed(3)})` } })
-        }
-        children.push({ type: 'circle', shape: { cx: x, cy: y, r: value > 0 ? radius : 1 }, style: { fill: value > 0 ? api.visual('color') : '#dce3ec', opacity } })
+        // 子元素结构恒为 [rect, circle]（圆环固定追加在末位）：ECharts 按下标复用元素，
+        // 若某帧缺项导致类型错位，copyElement 会把圆形的 r/cx/cy 并入矩形形状，
+        // 因此矩形必须显式带 r: 0 抵消污染
+        const maskY = heatBandY(api, anim.maskRow, lastD)
+        const children: any[] = [
+          { type: 'rect', shape: { x: x - width / 2, y: maskY - height / 2, width, height, r: 0 }, style: { fill: anim.maskAlpha > 0 ? `rgba(51,78,172,${(.045 * anim.maskAlpha).toFixed(3)})` : 'transparent' } },
+          { type: 'circle', shape: { cx: x, cy: y, r: value > 0 ? radius : 1 }, style: { fill: value > 0 ? api.visual('color') : '#dce3ec', opacity } },
+        ]
         if (params.dataIndex === ringAnchor) {
           const [ringX, ringY] = heatBandXY(api, anim.ringH, anim.ringD, lastH, lastD)
           children.push({ type: 'circle', shape: { cx: ringX, cy: ringY, r: maxR * anim.ringVF + 2.5 }, style: { fill: 'transparent', stroke: C.primary, lineWidth: 1, lineDash: [2, 2] } })

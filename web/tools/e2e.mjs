@@ -111,7 +111,7 @@ await page.click('.conn-btn')
 await sleep(300)
 check('设置弹窗打开', await exists('.modal'))
 await page.evaluate(() => {
-  const input = document.querySelectorAll('.modal input[type=number]')[0]
+  const input = document.querySelectorAll('.modal .stepper__input')[0]
   input.value = '60'
   input.dispatchEvent(new Event('input', { bubbles: true }))
 })
