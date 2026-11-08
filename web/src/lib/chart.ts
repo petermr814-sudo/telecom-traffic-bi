@@ -1,6 +1,6 @@
 export const C = {
-  primary: '#1f5eff',
-  primarySoft: 'rgba(31,94,255,0.12)',
+  primary: '#334eac',
+  primarySoft: 'rgba(51,78,172,0.10)',
   cyan: '#0891b2',
   teal: '#0e9f6e',
   violet: '#6d5ce7',
@@ -8,21 +8,22 @@ export const C = {
   red: '#dc2f2f',
   text: '#0c1526',
   text2: '#51607a',
-  axis: '#8b97ad',
+  axis: '#778399',
   grid: '#eef2f8',
   border: '#e6ebf4'
 }
 
-export const chartPalette = [C.primary, '#0891b2', '#6d5ce7', '#0e9f6e', '#d97a00', '#dc2f2f', '#64748b']
+export const chartPalette = ['#334eac', '#7096d1', '#a6bddb', '#52678f', '#8f9eb8', '#b9c4d4', '#d7dfe9']
 
 export const axisLabel = {
   color: C.axis,
-  fontSize: 10.5,
+  fontSize: 11,
+  hideOverlap: true,
   fontFamily: 'Inter, "Segoe UI", "Microsoft YaHei", sans-serif'
 }
 
 export const splitLine = {
-  lineStyle: { color: C.grid, type: [3, 3] as number[] }
+  lineStyle: { color: C.grid, type: 'solid' as const }
 }
 
 export const tooltipBase = {

@@ -1,546 +1,292 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import dayjs from 'dayjs'
 import Panel from '@/components/Panel.vue'
 import KpiCard from '@/components/KpiCard.vue'
 import BaseChart from '@/components/BaseChart.vue'
+import ShareWaffle from '@/components/ShareWaffle.vue'
+import Disclosure from '@/components/Disclosure.vue'
 import Icon from '@/components/Icon.vue'
 import { useAsync } from '@/lib/useAsync'
 import { api } from '@/api/client'
-import { fmtBytes, fmtDelta, hourLabel, splitBytes, RANGE_LABEL } from '@/lib/format'
+import { fmtBytes, hourLabel, splitBytes } from '@/lib/format'
 import { axisLabel, C, gridBase, splitLine, tooltipBase } from '@/lib/chart'
+import { dotHeatOption, type HeatAnim } from '@/lib/chartTemplates'
 import { downloadFile, toCsv, toast, ui } from '@/stores/ui'
 
-const chartType = ref<'area' | 'bar'>('area')
-const showAvg = ref(true)
+const selectedDay = ref<number | null>(null)
+const chartType = ref<'line' | 'bar'>('bar')
+const showAvg = ref(false)
 const heatMode = ref<'abs' | 'share'>('abs')
 const rankSort = ref<'flow' | 'hour'>('flow')
-const heatPick = ref<{ day: number; hour: number; value: number } | null>(null)
-const heatLoading = ref(false)
+const heatPick = ref<{ day: number; hour: number } | null>(null)
+const heat = useAsync(() => api.heatmap(ui.region), () => [ui.region, ui.tick])
+const meta = useAsync(() => api.meta())
+const hours = Array.from({ length: 24 }, (_, index) => hourLabel(index))
+const dates = computed(() => Array.from({ length: 7 }, (_, index) => dayjs(meta.data.value?.dateEnd ?? '2026-11-08').subtract(6 - index, 'day')))
+const dayLabels = computed(() => dates.value.map(date => date.format('MM-DD')))
+const weekdayLabels = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+const daily = computed(() => dates.value.map((date, index) => {
+  const values = Array.from({ length: 24 }, () => 0)
+  for (const [hour, day, value] of heat.data.value ?? []) if (day === index) values[hour] = value
+  const total = values.reduce((sum, value) => sum + value, 0)
+  const peak = Math.max(0, ...values)
+  return { index, date, values, total, peak, peakIndex: values.indexOf(peak), average: total / 24 }
+}))
+const dayButtons = computed(() => [...daily.value].reverse())
+const selected = computed(() => selectedDay.value === null ? null : daily.value[selectedDay.value])
+const previous = computed(() => selectedDay.value !== null && selectedDay.value > 0 ? daily.value[selectedDay.value - 1] : null)
+const previousDelta = computed(() => previous.value?.total && selected.value ? (selected.value.total / previous.value.total - 1) * 100 : undefined)
+const dateSpan = computed(() => `${dates.value[0].format('MM月DD日')} — ${dates.value[6].format('MM月DD日')}`)
+const selectedTitle = computed(() => selected.value ? `${selected.value.date.format('MM月DD日')} · ${weekdayLabels[selected.value.date.day()]}` : '')
+const displayValues = computed(() => (heat.data.value ?? []).map(([hour, day, value]) => [hour, day, heatMode.value === 'abs' ? value : (daily.value[day].total ? value / daily.value[day].total * 100 : 0)]))
+const ringTarget = computed(() => {
+  const points = displayValues.value
+  if (!points.length) return null
+  const max = Math.max(1, ...points.map(point => point[2]))
+  let peakHour: number
+  let peakDay: number
+  if (selectedDay.value !== null && daily.value[selectedDay.value]) {
+    // 选中日期 → 标注当天峰值时段，与 KPI「峰值时段」一致
+    peakHour = daily.value[selectedDay.value].peakIndex
+    peakDay = selectedDay.value
+  } else {
+    // 未选中 → 标注当前展示值的全周最大格
+    let best = 0
+    for (let i = 1; i < points.length; i++) if (points[i][2] > points[best][2]) best = i
+    peakHour = points[best][0]
+    peakDay = points[best][1]
+  }
+  const peakValue = points.find(point => point[0] === peakHour && point[1] === peakDay)?.[2] ?? 0
+  return {
+    maskRow: selectedDay.value ?? 0,
+    maskAlpha: selectedDay.value !== null ? 1 : 0,
+    ringH: peakHour,
+    ringD: peakDay,
+    ringVF: Math.sqrt(peakValue / max),
+  }
+})
+// 遮罩行与圆环的补间状态：每帧写入触发热力图重绘，日期选择器遮罩同源同步
+const anim = reactive({ maskRow: 0, maskAlpha: 0, ringH: 0, ringD: 0, ringVF: 0 })
+const pickerMaskStyle = computed(() => ({
+  transform: `translateY(calc(${daily.value.length - 1 - anim.maskRow} * 100%))`,
+  opacity: String(anim.maskAlpha),
+}))
+const reduceMotion = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+let animRaf = 0
+let animInited = false
 
-const { data, loading, error, run } = useAsync(
-  () => api.hourly(ui.range, ui.region),
-  () => [ui.range, ui.region, ui.tick]
-)
-
-const heat = useAsync(
-  () => api.heatmap(ui.region),
-  () => [ui.region, ui.tick]
-)
-
-const hours = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`)
-const dayLabels = Array.from({ length: 7 }, (_, i) => dayjs('2026-11-08').subtract(6 - i, 'day').format('MM-DD'))
-
-const ratio = computed(() => {
-  if (!data.value) return 0
-  return data.value.peakBytes / Math.max(1, data.value.avgBytes)
+function tweenAnim(target: HeatAnim) {
+  cancelAnimationFrame(animRaf)
+  if (!animInited || reduceMotion) {
+    Object.assign(anim, target)
+    animInited = true
+    return
+  }
+  const from = { ...anim }
+  const start = performance.now()
+  const step = (now: number) => {
+    const progress = Math.min(1, (now - start) / 380)
+    const eased = 1 - (1 - progress) ** 3
+    anim.maskRow = from.maskRow + (target.maskRow - from.maskRow) * eased
+    anim.maskAlpha = from.maskAlpha + (target.maskAlpha - from.maskAlpha) * eased
+    anim.ringH = from.ringH + (target.ringH - from.ringH) * eased
+    anim.ringD = from.ringD + (target.ringD - from.ringD) * eased
+    anim.ringVF = from.ringVF + (target.ringVF - from.ringVF) * eased
+    if (progress < 1) animRaf = requestAnimationFrame(step)
+  }
+  animRaf = requestAnimationFrame(step)
+}
+watch(ringTarget, target => { if (target) tweenAnim(target) }, { immediate: true })
+const heatOption = computed(() => {
+  const option = dotHeatOption(displayValues.value, hours, dayLabels.value, value => heatMode.value === 'abs' ? fmtBytes(value) : `${value.toFixed(2)}%`, { ...anim })
+  option.grid = { left: 18, right: 18, top: 10, bottom: 30 }
+  option.yAxis.axisLabel = { show: false }
+  return option
 })
 
-const totalDelta = computed(() => {
-  const d = data.value
-  if (!d) return 0
-  const cur = d.current.reduce((a, b) => a + b, 0)
-  const prev = d.compare.reduce((a, b) => a + b, 0)
-  return prev ? (cur / prev - 1) * 100 : 0
-})
-
-const peakDelta = computed(() => {
-  const d = data.value
-  if (!d) return 0
-  const prev = Math.max(...d.compare)
-  return (d.peakBytes / Math.max(1, prev) - 1) * 100
-})
+function chooseDay(index: number) {
+  selectedDay.value = index
+  heatPick.value = null
+}
+function onHeatClick(params: any) {
+  const [hour, day] = params.value
+  selectedDay.value = day
+  heatPick.value = { hour, day }
+}
+function closeDay() {
+  selectedDay.value = null
+  heatPick.value = null
+}
 
 const trendOption = computed(() => {
-  const d = data.value
-  if (!d) return {}
-  const avgLine = d.avgBytes
+  const day = selected.value
+  if (!day) return {}
+  const compare = ui.compare && previous.value
+  const focusedHour = heatPick.value?.day === day.index ? heatPick.value.hour : day.peakIndex
   return {
-    animationDuration: 500,
-    grid: { ...gridBase, top: 28 },
-    tooltip: {
-      trigger: 'axis',
-      ...tooltipBase,
-      axisPointer: { type: 'shadow', shadowStyle: { color: 'rgba(31,94,255,0.05)' } },
-      formatter: (ps: any[]) => {
-        const p = ps[0]
-        const c = ps[1]
-        const diff = c && c.value ? ((p.value / c.value - 1) * 100).toFixed(1) : ''
-        return `<div style="font-weight:600;margin-bottom:4px">${p.axisValue}</div>
-          <div style="display:flex;justify-content:space-between;gap:18px"><span>本期</span><b>${fmtBytes(p.value)}</b></div>
-          ${c ? `<div style="display:flex;justify-content:space-between;gap:18px;opacity:.7"><span>上期</span><span>${fmtBytes(c.value)}</span></div>` : ''}
-          ${diff ? `<div style="margin-top:3px;color:${Number(diff) >= 0 ? '#6ee7b7' : '#fca5a5'}">环比 ${Number(diff) > 0 ? '+' : ''}${diff}%</div>` : ''}`
-      }
-    },
-    xAxis: {
-      type: 'category',
-      data: hours,
-      axisLine: { lineStyle: { color: C.border } },
-      axisTick: { show: false },
-      axisLabel: { ...axisLabel, interval: 1 }
-    },
-    yAxis: {
-      type: 'value',
-      splitLine,
-      axisLabel: { ...axisLabel, formatter: (v: number) => fmtBytes(v, 0) }
-    },
-    series: [
-      {
-        name: '本期',
-        type: chartType.value === 'bar' ? 'bar' : 'line',
-        smooth: chartType.value === 'bar' ? false : 0.35,
-        showSymbol: false,
-        barWidth: '54%',
-        data: d.current,
-        itemStyle: chartType.value === 'bar'
-          ? {
-              borderRadius: [4, 4, 0, 0],
-              color: {
-                type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-                colorStops: [
-                  { offset: 0, color: '#4b7dff' },
-                  { offset: 1, color: 'rgba(75,125,255,0.35)' }
-                ]
-              }
-            }
-          : { color: C.primary },
-        lineStyle: { width: 2.4, color: C.primary },
-        areaStyle: chartType.value === 'area'
-          ? {
-              color: {
-                type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-                colorStops: [
-                  { offset: 0, color: 'rgba(31,94,255,0.18)' },
-                  { offset: 1, color: 'rgba(31,94,255,0)' }
-                ]
-              }
-            }
-          : undefined,
-        markLine: showAvg.value
-          ? {
-              silent: true,
-              symbol: 'none',
-              lineStyle: { color: '#d97a00', type: 'dashed', width: 1.2 },
-              label: { formatter: `日均 ${fmtBytes(avgLine, 0)}`, position: 'insideEndTop', color: '#d97a00', fontSize: 10 },
-              data: [{ yAxis: avgLine }]
-            }
-          : undefined
-      },
-      ...(ui.compare
-        ? [{
-            name: '上期',
-            type: 'line',
-            smooth: 0.35,
-            showSymbol: false,
-            data: d.compare,
-            lineStyle: { width: 1.4, type: 'dashed', color: '#a9b8d3' },
-            itemStyle: { color: '#a9b8d3' }
-          }]
-        : [])
-    ]
-  } as any
-})
-
-const heatOption = computed(() => {
-  const points = heat.data.value
-  if (!points) return {}
-  const values = points.map(([h, d, v]) => {
-    if (heatMode.value === 'abs') return [h, d, v]
-    const dayTotal = points.filter((p) => p[1] === d).reduce((s, p) => s + p[2], 0)
-    return [h, d, Number(((v / dayTotal) * 100).toFixed(2))]
-  })
-  const max = Math.max(...values.map((v) => v[2] as number))
-  return {
-    animationDuration: 400,
-    grid: { left: 46, right: 64, top: 10, bottom: 26 },
-    tooltip: {
-      ...tooltipBase,
-      formatter: (p: any) => {
-        const [h, d, v] = p.value
-        return `${dayLabels[d]} ${hourLabel(h)}<br/><b>${heatMode.value === 'abs' ? fmtBytes(v) : `${v}%`}</b>`
-      }
-    },
-    xAxis: {
-      type: 'category',
-      data: hours,
-      splitArea: { show: false },
-      axisLine: { lineStyle: { color: C.border } },
-      axisTick: { show: false },
-      axisLabel: { ...axisLabel, interval: 2 }
-    },
-    yAxis: {
-      type: 'category',
-      data: dayLabels,
-      axisLine: { show: false },
-      axisTick: { show: false },
-      axisLabel: { ...axisLabel }
-    },
-    visualMap: {
-      type: 'continuous',
-      seriesIndex: 0,
-      dimension: 2,
-      min: 0,
-      max,
-      calculable: false,
-      orient: 'vertical',
-      right: 6,
-      top: 26,
-      itemWidth: 10,
-      itemHeight: 96,
-      textStyle: { fontSize: 9.5, color: C.axis },
-      inRange: { color: ['#eef3ff', '#cad9ff', '#8fb0ff', '#4b7dff', '#1f5eff'] }
-    },
-    series: [
-      {
-        type: 'heatmap',
-        data: values,
-        itemStyle: { borderColor: '#fff', borderWidth: 1.5, borderRadius: 2 },
-        emphasis: { itemStyle: { borderColor: C.text, borderWidth: 1 } }
-      }
-    ]
+    animationDuration: 350,
+    grid: { ...gridBase, top: 24 },
+    tooltip: { ...tooltipBase, trigger: 'axis', axisPointer: { type: chartType.value === 'bar' ? 'shadow' : 'line' }, formatter: (points: any[]) => {
+      const current = points[0], before = points[1]
+      return `${day.date.format('MM-DD')} ${current.axisValue}<br/>当天 <b>${fmtBytes(current.value)}</b>${before ? `<br/>前一天 ${fmtBytes(before.value)}` : ''}`
+    } },
+    xAxis: { type: 'category', data: hours, boundaryGap: chartType.value === 'bar', axisLine: { lineStyle: { color: C.border } }, axisTick: { show: false }, axisLabel: { ...axisLabel, interval: 'auto' } },
+    yAxis: { type: 'value', splitNumber: 4, splitLine, axisLabel: { ...axisLabel, formatter: (value: number) => fmtBytes(value, 0) } },
+    series: [{
+      name: '当天', type: chartType.value, smooth: false, data: day.values, barWidth: '70%',
+      showSymbol: chartType.value === 'line', symbol: 'circle', symbolSize: 4,
+      itemStyle: chartType.value === 'bar' ? { color: (p: any) => p.dataIndex === focusedHour ? '#081f5c' : '#7096d1', borderRadius: [3, 3, 0, 0] } : { color: C.primary },
+      lineStyle: { width: 1.8, color: C.primary },
+      label: { show: chartType.value === 'bar', position: 'top', color: C.primary, fontSize: 11, fontWeight: 650, formatter: (p: any) => p.dataIndex === focusedHour ? fmtBytes(p.value) : '' },
+      markLine: showAvg.value ? { silent: true, symbol: 'none', lineStyle: { color: C.amber, type: 'dashed', width: 1 }, label: { show: false }, data: [{ yAxis: day.average }] } : undefined,
+    }, ...(compare ? [{ name: '前一天', type: 'line', data: previous.value!.values, smooth: false, showSymbol: false, lineStyle: { color: '#a6b3c7', type: 'dashed', width: 1.2 }, itemStyle: { color: '#a6b3c7' } }] : [])],
   } as any
 })
 
 const periods = computed(() => {
-  const d = data.value
-  if (!d) return []
-  const total = d.current.reduce((a, b) => a + b, 0)
-  const defs = [
-    { name: '早高峰', range: [7, 9], color: 'var(--cyan)' },
-    { name: '午间', range: [11, 13], color: 'var(--violet)' },
-    { name: '晚高峰', range: [19, 22], color: 'var(--primary)' },
-    { name: '夜间', range: [0, 6], color: 'var(--text-3)' }
+  const day = selected.value
+  if (!day) return []
+  const definitions = [
+    { name: '早高峰 07–09时', from: 7, to: 9, color: '#a6bddb' },
+    { name: '午间 11–13时', from: 11, to: 13, color: '#7096d1' },
+    { name: '晚高峰 19–22时', from: 19, to: 22, color: '#334eac' },
+    { name: '夜间 00–06时', from: 0, to: 6, color: '#778399' },
   ]
-  return defs.map((x) => {
-    const sum = d.current.slice(x.range[0], x.range[1] + 1).reduce((a, b) => a + b, 0)
-    return { ...x, share: (sum / total) * 100, bytes: sum }
-  })
+  const list = definitions.map(item => ({ name: item.name, color: item.color, value: day.values.slice(item.from, item.to + 1).reduce((sum, value) => sum + value, 0) }))
+  return [...list, { name: '其他时段', color: '#d8e1ed', value: Math.max(0, day.total - list.reduce((sum, item) => sum + item.value, 0)) }]
 })
-
 const ranked = computed(() => {
-  const d = data.value
-  if (!d) return []
-  const list = d.current.map((v, h) => {
-    const prev = d.compare[h] || 0
-    const total = d.current.reduce((a, b) => a + b, 0)
-    return {
-      hour: h,
-      value: v,
-      share: (v / total) * 100,
-      delta: prev ? (v / prev - 1) * 100 : 0
-    }
-  })
-  return rankSort.value === 'flow' ? [...list].sort((a, b) => b.value - a.value) : list
+  const day = selected.value
+  if (!day) return []
+  const list = day.values.map((value, hour) => ({ hour, value, share: day.total ? value / day.total * 100 : 0 }))
+  return rankSort.value === 'flow' ? list.sort((a, b) => b.value - a.value) : list
 })
-
-function onHeatClick(p: any) {
-  const [h, d, v] = p.value
-  heatPick.value = { day: d, hour: h, value: v }
-}
-
-const rangeLabel = computed(() => RANGE_LABEL[ui.range])
 
 function exportCsv() {
-  const d = data.value
-  if (!d) return
-  const rows: (string | number)[][] = [
-    ['时段', '本期流量(字节)', '上期流量(字节)', '环比%'],
-    ...d.current.map((v, i) => [hours[i], v, d.compare[i] ?? 0, d.compare[i] ? ((v / d.compare[i] - 1) * 100).toFixed(1) : ''])
-  ]
-  downloadFile(`时段分析_${rangeLabel.value}_${ui.region}.csv`, toCsv(rows))
-  toast('success', '已导出 CSV', `${rows.length - 1} 行时段数据`)
+  if (!heat.data.value) { toast('warn', '时段数据还未就绪'); return }
+  const days = selected.value ? [selected.value] : daily.value
+  const rows: (string | number)[][] = [['日期', '小时', '流量(字节)', '占当日%'], ...days.flatMap(day => day.values.map((value, hour) => [day.date.format('YYYY-MM-DD'), hourLabel(hour), value, day.total ? (value / day.total * 100).toFixed(2) : '0']))]
+  downloadFile(`时段分析_${selected.value?.date.format('YYYY-MM-DD') ?? '近7天'}_${ui.region}.csv`, toCsv(rows))
+  toast('success', '已导出时段数据', `${rows.length - 1} 行小时读数`)
 }
-
 onMounted(() => window.addEventListener('telco:export', exportCsv))
-onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
+onUnmounted(() => {
+  window.removeEventListener('telco:export', exportCsv)
+  cancelAnimationFrame(animRaf)
+})
 </script>
 
 <template>
-  <div v-if="error" class="card error-card">
-    <Icon name="alert" :size="22" />
-    <div><strong>时段数据加载失败</strong><p>{{ error }}</p></div>
-    <button class="btn btn--primary" @click="run">重试</button>
-  </div>
-
-  <div v-else-if="data" class="page">
-    <section class="kpi-grid">
-      <KpiCard
-        label="峰值时段"
-        :value="hourLabel(data.peakIndex)"
-        icon="clock"
-        tone="blue"
-        :delta="peakDelta"
-        delta-label="峰值流量较上期"
-        :spark="data.current"
-      />
-      <KpiCard
-        label="峰值流量"
-        :value="splitBytes(data.peakBytes).value"
-        :unit="splitBytes(data.peakBytes).unit"
-        icon="activity"
-        tone="violet"
-        :delta="peakDelta"
-        :spark="data.current"
-      />
-      <KpiCard
-        label="日均小时流量"
-        :value="splitBytes(data.avgBytes).value"
-        :unit="splitBytes(data.avgBytes).unit"
-        icon="wifi"
-        tone="teal"
-        :delta="totalDelta"
-        delta-label="整体较上期"
-        :spark="data.current"
-      />
-      <KpiCard
-        label="峰均比"
-        :value="ratio.toFixed(2)"
-        unit="×"
-        icon="trend-up"
-        tone="amber"
-        :delta="0"
-        delta-label="峰值 / 日均"
-        :spark="data.current"
-      />
-    </section>
-
-    <div class="grid grid--main">
-      <Panel title="24 小时流量分布" :sub="`${ui.region === 'all' ? '全国' : ui.region} · ${rangeLabel}`">
-        <template #actions>
-          <div class="seg seg--sm">
-            <button class="seg__item" :class="{ 'is-active': chartType === 'area' }" @click="chartType = 'area'">面积</button>
-            <button class="seg__item" :class="{ 'is-active': chartType === 'bar' }" @click="chartType = 'bar'">柱状</button>
-          </div>
-          <button class="btn btn--sm" :class="{ 'is-active': showAvg }" @click="showAvg = !showAvg">
-            日均线
-          </button>
-        </template>
-        <BaseChart :option="trendOption" height="300px" :replace-merge="['series']" />
-      </Panel>
-
-      <Panel title="全天流量结构" sub="按典型时段聚合">
-        <ul class="periods">
-          <li v-for="p in periods" :key="p.name">
-            <div class="period-top">
-              <span class="period-name">{{ p.name }}</span>
-              <span class="period-share num">{{ p.share.toFixed(1) }}%</span>
-            </div>
-            <div class="period-track"><i :style="{ width: `${p.share}%`, background: p.color }" /></div>
-            <div class="period-foot">
-              <span>{{ p.range[0] === 0 ? '00' : p.range[0] }}:00 – {{ p.range[1] }}:59</span>
-              <span class="num">{{ fmtBytes(p.bytes, 0) }}</span>
-            </div>
-          </li>
-        </ul>
-        <div class="period-note">
-          <Icon name="info" :size="13" />
-          晚高峰贡献了全天 {{ periods[2]?.share.toFixed(1) }}% 的流量，是扩容与保障的重点窗口。
+  <div class="page hourly-page">
+    <div v-if="heat.error.value" class="card error-card"><Icon name="alert" :size="22" /><div><strong>时段数据加载失败</strong><p>{{ heat.error.value }}</p></div><button class="btn" @click="heat.run">重试</button></div>
+    <template v-else-if="heat.data.value">
+      <Panel class="weekly-panel" data-template="F10" title="周 × 小时流量热力图" :sub="`${dateSpan} · ${ui.region === 'all' ? '全国' : ui.region}`">
+        <template #actions><div class="seg" aria-label="热力图统计方式"><button class="seg__item" :class="{ 'is-active': heatMode === 'abs' }" @click="heatMode = 'abs'">绝对值</button><button class="seg__item" :class="{ 'is-active': heatMode === 'share' }" @click="heatMode = 'share'">占当天</button></div></template>
+        <div class="heatmap-explorer">
+          <nav class="day-picker" aria-label="选择日期查看当天详情">
+            <div class="day-picker-mask" aria-hidden="true" :style="pickerMaskStyle" />
+            <button v-for="day in dayButtons" :key="day.index" class="day-button" :class="{ 'is-selected': selectedDay === day.index }" :aria-pressed="selectedDay === day.index" :aria-label="`查看 ${day.date.format('YYYY-MM-DD')} 的统计详情`" @click="chooseDay(day.index)"><strong>{{ day.date.format('MM-DD') }}</strong><span>{{ weekdayLabels[day.date.day()] }}</span><Icon name="chevron-right" :size="12" /></button>
+          </nav>
+          <BaseChart :option="heatOption" height="360px" :replace-merge="['series', 'visualMap']" @chart-click="onHeatClick" />
         </div>
+        <div class="heat-footer"><span class="heat-help"><Icon name="calendar" :size="13" />选择左侧日期，展开当天统计与图表</span><span>{{ heatMode === 'abs' ? '点面积表示流量' : '每行合计 100%' }} · 圆环自动标注峰值时段</span></div>
       </Panel>
-    </div>
 
-    <div class="grid grid--heat">
-      <Panel title="周 × 小时流量热力图" sub="最近 7 天，颜色越深流量越高">
-        <template #actions>
-          <div class="seg seg--sm">
-            <button class="seg__item" :class="{ 'is-active': heatMode === 'abs' }" @click="heatMode = 'abs'">绝对值</button>
-            <button class="seg__item" :class="{ 'is-active': heatMode === 'share' }" @click="heatMode = 'share'">占全天</button>
-          </div>
-        </template>
-        <BaseChart :option="heatOption" height="252px" :replace-merge="['series', 'visualMap']" @chart-click="onHeatClick" />
-        <div class="heat-foot">
-          <span v-if="heatPick" class="heat-pick">
-            <Icon name="target" :size="12" />
-            已选 {{ dayLabels[heatPick.day] }} {{ hourLabel(heatPick.hour) }}
-            <b>{{ heatMode === 'abs' ? fmtBytes(heatPick.value) : `${heatPick.value.toFixed(2)}%` }}</b>
-          </span>
-          <span v-else class="muted">{{ heatMode === 'abs' ? '点击任意色块查看该时段流量' : '占全天：每行 24 小时合计 100%' }}</span>
-          <span class="muted">周中晚高峰更集中，周末峰值后移约 1 小时</span>
+      <section v-if="selected" class="day-details" aria-label="选中日期的详细分析" :data-date="selected.date.format('YYYY-MM-DD')">
+        <header class="day-detail-heading"><div><span class="detail-kicker">当天详情</span><h2>{{ selectedTitle }}</h2></div><button class="btn btn--ghost btn--sm" @click="closeDay"><Icon name="close" :size="14" />收起详情</button></header>
+        <div v-if="heatPick" class="heat-pick" aria-live="polite">已选 {{ selected.date.format('MM-DD') }} {{ hourLabel(heatPick.hour) }}<strong>{{ fmtBytes(selected.values[heatPick.hour]) }}</strong></div>
+        <div class="kpi-grid">
+          <KpiCard label="当天总流量" :value="splitBytes(selected.total).value" :unit="splitBytes(selected.total).unit" :delta="previousDelta" :delta-label="previous ? '较前一天' : '24 小时流量合计'" icon="wifi" />
+          <KpiCard label="峰值时段" :value="hourLabel(selected.peakIndex)" delta-label="当日流量最高的小时" icon="clock" />
+          <KpiCard label="峰值小时流量" :value="splitBytes(selected.peak).value" :unit="splitBytes(selected.peak).unit" delta-label="一个小时内的聚合流量" icon="activity" />
         </div>
-      </Panel>
-
-      <Panel title="时段明细" sub="按流量排序，可切换时间顺序">
-        <template #actions>
-          <div class="seg seg--sm">
-            <button class="seg__item" :class="{ 'is-active': rankSort === 'flow' }" @click="rankSort = 'flow'">按流量</button>
-            <button class="seg__item" :class="{ 'is-active': rankSort === 'hour' }" @click="rankSort = 'hour'">按时间</button>
-          </div>
-        </template>
-        <div class="table-wrap rank-wrap">
-          <table class="table table--compact">
-            <thead>
-              <tr>
-                <th>时段</th>
-                <th class="num">流量</th>
-                <th class="num">占全天</th>
-                <th class="num">环比</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="r in ranked" :key="r.hour">
-                <td class="is-strong num">{{ hourLabel(r.hour) }}</td>
-                <td class="num">{{ fmtBytes(r.value, 0) }}</td>
-                <td class="num">{{ r.share.toFixed(1) }}%</td>
-                <td class="num">
-                  <span class="delta" :class="r.delta >= 0 ? 'delta--up' : 'delta--down'">{{ fmtDelta(r.delta) }}</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div class="metric-strip"><span>日均小时流量<strong>{{ fmtBytes(selected.average) }}</strong></span><span>峰均比<strong>{{ (selected.peak / Math.max(1, selected.average)).toFixed(2) }}×</strong></span></div>
+        <div class="day-charts">
+          <Panel data-chart="day-trend" :data-template="chartType === 'bar' ? 'G12' : 'F2'" title="当天 24 小时流量" :sub="`${selected.date.format('MM月DD日')} · 每小时独立读数`">
+            <template #actions><div class="seg seg--sm"><button class="seg__item" :class="{ 'is-active': chartType === 'bar' }" @click="chartType = 'bar'">柱状</button><button class="seg__item" :class="{ 'is-active': chartType === 'line' }" @click="chartType = 'line'">折线</button></div></template>
+            <div class="chart-controls"><button v-if="previous" class="control-toggle" :class="{ 'is-active': ui.compare }" :aria-pressed="ui.compare" @click="ui.compare = !ui.compare"><span />对比前一天</button><button class="control-toggle" :class="{ 'is-active': showAvg }" :aria-pressed="showAvg" @click="showAvg = !showAvg"><span />日均线</button></div>
+            <BaseChart :option="trendOption" height="280px" :replace-merge="['series']" />
+            <p v-if="showAvg" class="chart-note">橙色虚线：当天小时均值 {{ fmtBytes(selected.average) }}</p>
+          </Panel>
+          <Panel data-template="G4" title="当天时段构成" sub="全部时段合计 100%"><ShareWaffle :items="periods" /></Panel>
         </div>
-      </Panel>
-    </div>
-  </div>
-
-  <div v-else class="skeleton-page">
-    <div class="kpi-grid"><div v-for="i in 4" :key="i" class="skeleton kpi-skel" /></div>
-    <div class="grid grid--main"><div class="skeleton panel-skel" /><div class="skeleton panel-skel" /></div>
+        <Disclosure title="查看当天 24 小时明细" sub="按流量排名或时间顺序逐项核对">
+          <div class="detail-table-head"><span>{{ selected.date.format('YYYY-MM-DD') }} · 24 条读数</span><div class="seg seg--sm"><button class="seg__item" :class="{ 'is-active': rankSort === 'flow' }" @click="rankSort = 'flow'">按流量</button><button class="seg__item" :class="{ 'is-active': rankSort === 'hour' }" @click="rankSort = 'hour'">按时间</button></div></div>
+          <div class="table-wrap"><table class="table"><thead><tr><th>小时</th><th class="num">流量</th><th class="num">占当天</th></tr></thead><tbody><tr v-for="row in ranked" :key="row.hour"><td>{{ hourLabel(row.hour) }}</td><td class="num">{{ fmtBytes(row.value) }}</td><td class="num">{{ row.share.toFixed(1) }}%</td></tr></tbody></table></div>
+        </Disclosure>
+      </section>
+      <div v-else class="day-placeholder"><Icon name="calendar" :size="20" /><div><strong>先看整周规律，再看一天的细节</strong><p>点击热力图左侧的日期，即可展开当天统计卡片和详细图表。</p></div></div>
+    </template>
+    <div v-else class="skeleton weekly-skeleton" aria-label="正在加载整周流量" />
   </div>
 </template>
 
 <style scoped>
-.page {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.grid {
-  display: grid;
-  gap: 12px;
-}
-
-.grid--main {
-  grid-template-columns: minmax(0, 1.85fr) minmax(0, 1fr);
-}
-
-.grid--heat {
-  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
-}
-
-.seg--sm .seg__item {
-  height: 24px;
-  padding: 0 8px;
-  font-size: 11px;
-}
-
-.btn.is-active {
+.page, .day-details { display: flex; flex-direction: column; gap: 24px; }
+.heatmap-explorer { display: grid; grid-template-columns: 106px minmax(0, 1fr); gap: 14px; }
+.day-picker { position: relative; display: grid; grid-template-rows: repeat(7, minmax(0, 1fr)); padding: 10px 0 30px; height: 360px; }
+.day-picker-mask {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 10px;
+  height: calc((100% - 40px) / 7);
+  border: 1px solid var(--primary-border);
+  border-radius: 8px;
   background: var(--primary-soft);
-  border-color: var(--primary-border);
-  color: var(--primary);
+  pointer-events: none;
+  z-index: 0;
 }
-
-.periods {
-  display: flex;
-  flex-direction: column;
-  gap: 13px;
+.day-button { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr 16px; align-content: center; padding: 5px 12px; text-align: left; border: 1px solid transparent; border-radius: 8px; }
+.day-button strong { font-size: 13px; font-weight: 550; color: var(--text-2); transition: color .25s ease; }
+.day-button > span { font-size: 10px; color: var(--text-3); margin-top: 1px; }
+.day-button > svg { grid-column: 2; grid-row: 1 / 3; align-self: center; color: var(--text-3); opacity: 0; transition: opacity .25s ease, color .25s ease; }
+.day-button:hover { background: var(--surface-2); }
+.day-button.is-selected { animation: day-select-pop .32s cubic-bezier(.34, 1.4, .64, 1); }
+.day-button.is-selected:hover { background: transparent; }
+.day-button.is-selected strong { color: var(--primary); }
+.day-button.is-selected > svg { opacity: 1; color: var(--primary); }
+@keyframes day-select-pop {
+  0% { transform: scale(.965); }
+  55% { transform: scale(1.012); }
+  100% { transform: scale(1); }
 }
-
-.period-top {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-.period-name {
-  font-size: 12px;
-  color: var(--text-2);
-}
-
-.period-share {
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.period-track {
-  height: 5px;
-  border-radius: 999px;
-  background: var(--surface-3);
-  margin: 5px 0 4px;
-  overflow: hidden;
-}
-
-.period-track i {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
-}
-
-.period-foot {
-  display: flex;
-  justify-content: space-between;
-  font-size: 10px;
-  color: var(--text-3);
-}
-
-.period-note {
-  display: flex;
-  gap: 7px;
-  margin-top: 14px;
-  padding: 9px 10px;
-  border-radius: 7px;
-  background: var(--surface-2);
-  font-size: 10.5px;
-  color: var(--text-3);
-  line-height: 1.55;
-}
-
-.period-note svg {
-  flex-shrink: 0;
-  margin-top: 1px;
-  color: var(--primary);
-}
-
-.heat-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 6px;
-  font-size: 10.5px;
-}
-
-.heat-pick {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--text-2);
-}
-
-.heat-pick b {
-  color: var(--text);
-  font-weight: 600;
-}
-
-.rank-wrap {
-  max-height: 268px;
-  overflow-y: auto;
-}
-
-.error-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 24px;
-  color: var(--red);
-}
-
-.error-card strong { color: var(--text); font-size: 13px; }
-.error-card p { color: var(--text-3); font-size: 12px; margin-top: 2px; }
-.error-card .btn { margin-left: auto; }
-
-.skeleton-page { display: flex; flex-direction: column; gap: 12px; }
-.kpi-skel { height: 118px; }
-.panel-skel { height: 340px; }
-
-@media (max-width: 1280px) {
-  .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .grid--main, .grid--heat { grid-template-columns: minmax(0, 1fr); }
+.heat-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px 24px; margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--text-3); font-size: 12px; }
+.heat-help { display: inline-flex; align-items: center; gap: 7px; color: var(--text-2); }
+.day-detail-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 8px; }
+.detail-kicker { font-size: 12px; color: var(--text-3); }
+.day-detail-heading h2 { font-size: 22px; font-weight: 600; letter-spacing: -.02em; margin-top: 5px; }
+.kpi-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+.day-charts { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr); gap: 24px; }
+.day-charts :deep(.panel-head) { flex-wrap: wrap; }
+.day-charts :deep(.panel-body) { padding-top: 14px; }
+.chart-controls { display: flex; flex-wrap: wrap; gap: 18px; margin-bottom: 10px; }
+.control-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-3); }
+.control-toggle > span { width: 11px; height: 11px; border: 1px solid var(--border-strong); border-radius: 3px; background: var(--surface); }
+.control-toggle.is-active { color: var(--text-2); }
+.control-toggle.is-active > span { background: var(--primary); border-color: var(--primary); box-shadow: inset 0 0 0 2px var(--surface); }
+.heat-pick { padding: 10px 14px; border-left: 2px solid var(--primary); color: var(--text-2); font-size: 12px; background: var(--primary-soft); }
+.heat-pick strong { color: var(--primary); margin-left: 16px; }
+.day-placeholder { display: flex; gap: 16px; align-items: center; padding: 24px 6px; color: var(--text-3); }
+.day-placeholder strong { color: var(--text-2); font-size: 14px; font-weight: 550; }
+.day-placeholder p { font-size: 12px; line-height: 1.7; margin-top: 5px; }
+.detail-table-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin: 10px 0 16px; color: var(--text-3); font-size: 12px; }
+.weekly-skeleton { height: 490px; }
+.error-card { display: flex; align-items: center; gap: 16px; padding: 24px; color: var(--red); }
+.error-card p { color: var(--text-3); font-size: 12px; }
+.error-card button { margin-left: auto; }
+@media (max-width: 1120px) { .day-charts { grid-template-columns: 1fr; } }
+@media (max-width: 680px) {
+  .heatmap-explorer { grid-template-columns: 64px minmax(0, 1fr); gap: 6px; }
+  .day-button { padding: 4px 6px; grid-template-columns: 1fr; }
+  .day-button strong { font-size: 12px; }
+  .day-button > svg { display: none; }
+  .heat-footer { font-size: 11px; }
+  .kpi-grid { grid-template-columns: 1fr; gap: 14px; }
+  .day-detail-heading h2 { font-size: 20px; }
+  .day-placeholder { align-items: flex-start; padding-top: 12px; }
+  .day-placeholder > svg { flex-shrink: 0; margin-top: 3px; }
+  .detail-table-head { flex-direction: column; align-items: flex-start; gap: 12px; }
 }
 </style>

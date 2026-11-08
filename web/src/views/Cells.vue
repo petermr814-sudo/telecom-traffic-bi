@@ -1,26 +1,67 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import type { EChartsOption } from 'echarts'
 import { useRoute } from 'vue-router'
 import Panel from '@/components/Panel.vue'
 import BaseChart from '@/components/BaseChart.vue'
 import Icon from '@/components/Icon.vue'
 import Modal from '@/components/Modal.vue'
+import Select from '@/components/Select.vue'
 import { useAsync } from '@/lib/useAsync'
 import { api } from '@/api/client'
 import type { CellRow } from '@/api/types'
 import { fmtBytes, fmtCount, fmtRate } from '@/lib/format'
 import { axisLabel, C, splitLine, tooltipBase } from '@/lib/chart'
+import { utilizationHistogram } from '@/lib/chartTemplates'
+import { ScatterMotion } from '@/lib/scatterMotion'
 import { downloadFile, toCsv, toast, ui } from '@/stores/ui'
 
 const route = useRoute()
 const q = ref('')
 const gen = ref<'all' | '5G' | '4G'>('all')
 const status = ref<'all' | '正常' | '预警' | '拥塞'>('all')
+const statusOptions: { value: typeof status.value; label: string }[] = [
+  { value: 'all', label: '全部状态' },
+  { value: '正常', label: '正常' },
+  { value: '预警', label: '预警' },
+  { value: '拥塞', label: '拥塞' }
+]
 const sortKey = ref<'util' | 'traffic' | 'users'>('util')
 const sortDir = ref(-1)
 const page = ref(1)
 const pageSize = 10
 const expandOpen = ref(false)
+const scatterView = ref<'strip' | 'users'>('strip')
+const scatterPanel = ref<InstanceType<typeof Panel> | null>(null)
+const scatterChart = ref<InstanceType<typeof BaseChart> | null>(null)
+const reduceMotion = ref(false)
+const animateScatter = ref(true)
+let scatterMotion: ScatterMotion | null = null
+let switchVersion = 0
+let motionPreference: MediaQueryList | null = null
+function syncMotionPreference() {
+  reduceMotion.value = motionPreference?.matches ?? false
+  if (reduceMotion.value) scatterMotion?.finish()
+}
+async function switchScatter(view: 'strip' | 'users', event: MouseEvent) {
+  if (view === scatterView.value) return
+  const version = ++switchVersion
+  const chart = scatterChart.value?.getChart()
+  const root = scatterPanel.value?.$el as HTMLElement | undefined
+  const animate = event.detail > 0 && !reduceMotion.value && root && chart && !chart.isDisposed()
+  animateScatter.value = Boolean(animate)
+  if (animate) {
+    scatterMotion ??= new ScatterMotion(root)
+    scatterMotion.prepare(chart, scatterView.value)
+  } else scatterMotion?.finish()
+  scatterView.value = view
+  await nextTick()
+  if (version !== switchVersion || !chart || chart.isDisposed()) return
+  if (animate) {
+    try { scatterMotion?.commit(chart, view) }
+    catch { scatterMotion?.finish() }
+  }
+}
 
 const { data, error, run } = useAsync(
   () => api.cells(ui.range, ui.region, ui.settings.warn, ui.settings.congest),
@@ -63,109 +104,56 @@ watch(data, (d) => {
 
 const summary = computed(() => data.value?.summary ?? { total: 0, warning: 0, congested: 0, expandable: 0, avgUtil: 0 })
 
-const histogram = computed(() => {
-  const buckets = Array.from({ length: 10 }, (_, i) => ({ label: `${i * 10}-${i * 10 + 10}`, count: 0 }))
-  for (const c of rows.value) {
-    const idx = Math.min(9, Math.floor(c.util / 10))
-    buckets[idx].count++
-  }
-  return buckets
-})
-
-const histOption = computed(() => ({
-  animationDuration: 400,
-  grid: { left: 6, right: 6, top: 22, bottom: 0, containLabel: true },
-  tooltip: { ...tooltipBase, formatter: (p: any) => `${p.name}%<br/><b>${p.value} 个小区</b>` },
-  xAxis: {
-    type: 'category',
-    data: histogram.value.map((b) => b.label),
-    axisLine: { lineStyle: { color: C.border } },
-    axisTick: { show: false },
-    axisLabel: { ...axisLabel, fontSize: 9.5, interval: 0 }
-  },
-  yAxis: { type: 'value', splitLine, axisLabel: { ...axisLabel, fontSize: 9.5 } },
-  series: [
-    {
-      type: 'bar',
-      data: histogram.value.map((b, i) => ({
-        value: b.count,
-        itemStyle: {
-          color: i * 10 >= ui.settings.congest ? C.red : i * 10 >= ui.settings.warn ? C.amber : C.primary,
-          opacity: 0.85,
-          borderRadius: [3, 3, 0, 0]
-        }
-      })),
-      barWidth: '62%'
-    }
-  ]
-}))
-
-const scatterCells = computed(() => rows.value.filter((c) => c.status !== '正常').concat(rows.value.filter((c) => c.status === '正常')).slice(0, 260))
-const maxTraffic = computed(() => Math.max(1, ...rows.value.map((c) => c.traffic)))
-
-const scatterOption = computed(() => ({
-  animationDuration: 500,
-  grid: { left: 6, right: 14, top: 20, bottom: 2, containLabel: true },
-  tooltip: {
-    ...tooltipBase,
-    formatter: (p: any) => {
-      const c = p.data.cell as CellRow
-      return `<div style="font-weight:600;margin-bottom:3px">${c.name}</div>
-        <div>用户 ${fmtCount(c.users)} · 利用率 <b>${c.util.toFixed(1)}%</b></div>
-        <div>带宽 ${fmtRate(c.bandwidthMbps * 1e6)} · ${c.generation}</div>`
-    }
-  },
-  xAxis: {
-    type: 'value',
-    name: '用户数',
-    nameLocation: 'middle',
-    nameGap: 22,
-    nameTextStyle: { fontSize: 9.5, color: C.axis },
-    splitLine,
-    axisLabel: { ...axisLabel, fontSize: 9.5, formatter: (v: number) => fmtCount(v) }
-  },
-  yAxis: {
-    type: 'value',
-    min: 0,
-    max: 100,
-    name: '利用率 %',
-    nameLocation: 'middle',
-    nameGap: 30,
-    nameTextStyle: { fontSize: 9.5, color: C.axis },
-    splitLine,
-    axisLabel: { ...axisLabel, fontSize: 9.5, formatter: '{value}' }
-  },
-  series: [
-    {
-      type: 'scatter',
-      data: scatterCells.value.map((c) => ({
-        value: [c.users, c.util, c.traffic],
-        cell: c,
-        itemStyle: { color: c.generation === '5G' ? '#1f5eff' : '#6d5ce7', opacity: 0.55, borderColor: '#fff', borderWidth: 0.8 }
-      })),
-      symbolSize: (v: any) => 4 + Math.sqrt(v[2] / maxTraffic.value) * 15,
-      emphasis: { itemStyle: { opacity: 1 }, scale: 1.4 },
-      markLine: {
-        silent: true,
-        symbol: 'none',
-        lineStyle: { color: C.amber, type: 'dashed', width: 1 },
-        label: { formatter: '预警', color: C.amber, fontSize: 9, position: 'insideEndTop' },
-        data: [{ yAxis: ui.settings.warn }]
-      }
+const histogram = computed(() => utilizationHistogram(rows.value.map(cell => cell.util), ui.settings.warn, ui.settings.congest))
+const histOption = computed(() => histogram.value.option)
+const maxTraffic = computed(() => Math.max(1, ...rows.value.map(cell => cell.traffic)))
+function stableJitter(id: string) {
+  let hash = 2166136261
+  for (const char of id) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619)
+  return ((hash >>> 0) % 1000 / 999 - .5) * .58
+}
+const scatterOption = computed(() => {
+  const strip = scatterView.value === 'strip'
+  const threshold = (value: number, name: string, color: string) => ({
+    ...(strip ? { xAxis: value } : { yAxis: value }), lineStyle: { color }, label: { formatter: name, color },
+  })
+  return {
+    animationDuration: 350,
+    animation: !reduceMotion.value,
+    animationDurationUpdate: animateScatter.value && !reduceMotion.value ? 460 : 0,
+    animationEasingUpdate: 'cubicInOut',
+    grid: { left: strip ? 36 : 4, right: 18, top: 28, bottom: 28, containLabel: true },
+    tooltip: { ...tooltipBase, formatter: (p: any) => {
+      const cell = p.data.cell as CellRow
+      if (!cell) return ''
+      return `${cell.name}<br/>${cell.generation} · 利用率 <b>${cell.util.toFixed(1)}%</b><br/>用户 ${fmtCount(cell.users)} · 日流量 ${fmtBytes(cell.traffic)}`
+    } },
+    xAxis: strip ? {
+      id: 'cell-x', type: 'value', animation: false, min: 0, max: 100, interval: 20, splitLine: { ...splitLine, show: true }, axisLine: { show: true, lineStyle: { color: '#a3afc0' } }, axisTick: { show: false }, axisLabel: { ...axisLabel, show: true, formatter: '{value}%' },
+    } : {
+      id: 'cell-x', type: 'value', animation: false, min: 0, max: null, interval: null, splitLine: { ...splitLine, show: true }, axisLine: { show: true, lineStyle: { color: '#a3afc0' } }, axisTick: { show: false }, axisLabel: { ...axisLabel, show: true, formatter: (value: number) => fmtCount(value) },
     },
-    {
-      type: 'scatter',
-      data: [],
-      markLine: {
-        silent: true,
-        symbol: 'none',
-        lineStyle: { color: C.red, type: 'dashed', width: 1 },
-        label: { formatter: '拥塞', color: C.red, fontSize: 9, position: 'insideEndTop' },
-        data: [{ yAxis: ui.settings.congest }]
-      }
-    }
-  ]
-}) as any)
+    yAxis: strip ? {
+      id: 'cell-y', type: 'value', animation: false, min: -.6, max: 1.6, interval: null, splitLine: { show: false }, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { show: false },
+    } : {
+      id: 'cell-y', type: 'value', animation: false, min: 0, max: 100, interval: 20, splitLine: { ...splitLine, show: true }, axisLine: { show: true, lineStyle: { color: '#a3afc0' } }, axisLabel: { ...axisLabel, show: true, formatter: '{value}%' },
+    },
+    series: [{
+      id: 'cell-records', type: 'scatter', name: '小区',
+      data: rows.value.map(cell => ({
+        id: cell.id, name: cell.name, cell, value: strip ? [cell.util, (cell.generation === '5G' ? 1 : 0) + stableJitter(cell.id), cell.traffic] : [cell.users, cell.util, cell.traffic],
+        itemStyle: { color: cell.status === '拥塞' ? C.red : cell.generation === '5G' ? C.primary : '#7096d1', opacity: strip ? .68 : .5, borderColor: '#fff', borderWidth: .6 },
+      })),
+      symbolSize: strip ? 5.5 : (value: any) => 4 + Math.sqrt(value[2] / maxTraffic.value) * 14,
+      emphasis: { scale: 1.45, itemStyle: { opacity: 1 } },
+      markLine: { animation: false, silent: true, symbol: 'none', lineStyle: { type: 'dashed', width: 1 }, label: { fontSize: 10, position: strip ? 'end' : 'insideEndTop', rotate: 0 }, data: [threshold(ui.settings.warn, '预警', C.amber), threshold(ui.settings.congest, '拥塞', C.red)] },
+    }, {
+      id: 'generation-labels', type: 'scatter', animation: false, silent: true, symbolSize: 0, clip: false,
+      data: strip ? [{ value: [0, 0], label: { formatter: '4G' } }, { value: [0, 1], label: { formatter: '5G' } }] : [],
+      label: { show: true, position: 'left', distance: 12, color: C.text2, fontSize: 11, fontWeight: 600 },
+    }],
+  } as any
+})
 
 const suggestions = computed(() =>
   [...rows.value]
@@ -221,8 +209,19 @@ function dispatchPlan() {
   expandOpen.value = false
 }
 
-onMounted(() => window.addEventListener('telco:export', exportCsv))
-onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
+watch(scatterPanel, panel => { if (!panel) { scatterMotion?.dispose(); scatterMotion = null } })
+onMounted(() => {
+  window.addEventListener('telco:export', exportCsv)
+  motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
+  syncMotionPreference()
+  motionPreference.addEventListener('change', syncMotionPreference)
+})
+onUnmounted(() => {
+  switchVersion++
+  window.removeEventListener('telco:export', exportCsv)
+  motionPreference?.removeEventListener('change', syncMotionPreference)
+  scatterMotion?.dispose()
+})
 </script>
 
 <template>
@@ -256,20 +255,23 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
       </button>
     </section>
 
+    <div class="section-heading"><h2>网络负载概况</h2><p>分布与用户规模共同判断扩容优先级</p></div>
     <div class="grid grid--charts">
-      <Panel title="利用率分布" sub="按 10% 区间分桶，颜色对应阈值">
-        <BaseChart :option="histOption" height="220px" />
+      <Panel data-template="F14" title="利用率分布" sub="每 5% 为一个连续区间 · 每横档为 1 个小区">
+        <BaseChart :option="histOption" height="250px" :replace-merge="['series']" />
+        <p class="chart-note">{{ rows.length }} 个小区完整分布 · 中位利用率 {{ histogram.median.toFixed(1) }}%</p>
       </Panel>
-      <Panel title="用户数 × 利用率" sub="气泡大小表示日流量，点击查看小区">
+      <Panel ref="scatterPanel" class="scatter-panel" :data-template="scatterView === 'strip' ? 'G15' : 'G9'" :title="scatterView === 'strip' ? '按网络制式看利用率' : '用户数 × 利用率'" :sub="scatterView === 'strip' ? '每点为一个小区 · 纵向错开仅用于辨认' : '气泡面积表示日流量 · 点击查看小区'">
         <template #actions>
-          <span class="legend"><i style="background: #1f5eff" />5G</span>
-          <span class="legend"><i style="background: #6d5ce7" />4G</span>
+          <div class="seg seg--sm" role="group" aria-label="图表维度"><button class="seg__item" :class="{ 'is-active': scatterView === 'strip' }" :aria-pressed="scatterView === 'strip'" @click="switchScatter('strip', $event)">制式分布</button><button class="seg__item" :class="{ 'is-active': scatterView === 'users' }" :aria-pressed="scatterView === 'users'" @click="switchScatter('users', $event)">用户规模</button></div>
         </template>
-        <BaseChart :option="scatterOption" height="220px" @chart-click="onScatterClick" />
+        <BaseChart ref="scatterChart" :option="scatterOption" height="250px" :replace-merge="['series', 'xAxis', 'yAxis']" @chart-click="onScatterClick" />
+        <p class="chart-note">展示全部 {{ rows.length }} 个小区 · 红点为拥塞小区</p>
       </Panel>
     </div>
 
-    <Panel title="小区清单" :sub="`${filtered.length} 个小区 · 点击行查看详情`" flush>
+    <div class="section-heading"><h2>定位与处理</h2><p>先筛选目标小区，再生成扩容建议</p></div>
+    <Panel class="cells-table" title="小区清单" :sub="`${filtered.length} 个小区 · 点击行查看详情`" flush>
       <template #actions>
         <div class="filters">
           <div class="search">
@@ -281,12 +283,7 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
             <button class="seg__item" :class="{ 'is-active': gen === '5G' }" @click="gen = '5G'">5G</button>
             <button class="seg__item" :class="{ 'is-active': gen === '4G' }" @click="gen = '4G'">4G</button>
           </div>
-          <select v-model="status" class="input select" aria-label="按状态筛选">
-            <option value="all">全部状态</option>
-            <option value="正常">正常</option>
-            <option value="预警">预警</option>
-            <option value="拥塞">拥塞</option>
-          </select>
+          <Select v-model="status" class="select" size="sm" :options="statusOptions" aria-label="按状态筛选" />
           <button class="btn btn--soft" @click="expandOpen = true">
             <Icon name="sparkles" :size="14" />
             生成扩容建议
@@ -385,9 +382,9 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
 </template>
 
 <style scoped>
-.page { display: flex; flex-direction: column; gap: 12px; }
+.page { display: flex; flex-direction: column; gap: 24px; }
 
-.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; }
 
 .stat {
   display: flex;
@@ -417,7 +414,7 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
 .stat > div strong { font-size: 20px; font-weight: 650; letter-spacing: -0.02em; }
 .stat-sub { position: absolute; right: 13px; top: 14px; font-size: 9.5px; color: var(--text-3); }
 
-.grid { display: grid; gap: 12px; }
+.grid { display: grid; gap: 24px; }
 .grid--charts { grid-template-columns: 1fr 1fr; }
 
 .legend { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; color: var(--text-3); margin-left: 6px; }
@@ -427,7 +424,7 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
 .search { position: relative; }
 .search svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--text-3); }
 .search .input { width: 200px; height: 30px; padding-left: 28px; font-size: 12px; }
-.select { height: 30px; width: 100px; font-size: 12px; }
+.select { width: 100px; }
 .seg--sm .seg__item { height: 30px; padding: 0 9px; font-size: 11.5px; }
 
 .cell-name { font-size: 12px; font-weight: 500; color: var(--text); }
@@ -472,13 +469,45 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
 .error-card p { color: var(--text-3); font-size: 12px; margin-top: 2px; }
 .error-card .btn { margin-left: auto; }
 
-.skeleton-page { display: flex; flex-direction: column; gap: 12px; }
+.skeleton-page { display: flex; flex-direction: column; gap: 24px; }
 .stats-skel { height: 84px; }
 .chart-skel { height: 280px; }
 .table-skel { height: 420px; }
 
-@media (max-width: 1280px) {
+@media (max-width: 1120px) {
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grid--charts { grid-template-columns: 1fr; }
 }
+
+.stats { gap: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.stat { border: 0; border-radius: 0; box-shadow: none; background: transparent; padding: 24px; min-height: 122px; }
+.stat + .stat { border-left: 1px solid var(--border); }
+.stat:hover { transform: none; box-shadow: none; }
+.stat-sub { font-size: 11px; }
+@media (max-width: 1180px) {
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat { padding: 20px 16px; }
+  .stat:nth-child(3) { border-left: 0; border-top: 1px solid var(--border); }
+  .stat:nth-child(4) { border-top: 1px solid var(--border); }
+}
+
+.stat { display: grid; grid-template-columns: 32px 1fr; align-content: center; gap: 8px 12px; text-align: left; }
+.stat-icon { grid-row: 1 / 3; }
+.stat-sub { position: static; grid-column: 2; }
+.stat > div strong { font-size: 28px; margin-top: 5px; }
+.stat > div span { font-size: 12px; }
+.stat.is-active { background: var(--primary-soft); box-shadow: inset 0 -3px 0 var(--primary); }
+.cells-table :deep(.panel-head) { flex-direction: column; align-items: stretch; }
+.cells-table :deep(.panel-actions) { width: 100%; }
+.filters { width: 100%; flex-wrap: wrap; gap: 10px; }
+.filters > .btn { margin-left: auto; }
+.search { flex: 1; min-width: 180px; max-width: 320px; }
+.search .input { width: 100%; }
+@media (max-width: 680px) { .filters > .btn { margin-left: 0; } .search { max-width: none; flex-basis: 100%; } }
+
+.scatter-panel { position: relative; isolation: isolate; overflow: hidden; }
+.scatter-panel :deep(.panel-head) { flex-wrap: wrap; align-items: flex-start; }
+.scatter-panel :deep(.panel-head > div:first-child) { flex: 1; min-width: min(100%, 180px); }
+.scatter-panel :deep(.panel-sub) { min-height: 36px; line-height: 18px; }
+.scatter-panel[data-motion="running"] :deep(.chart-box) { pointer-events: none; }
 </style>

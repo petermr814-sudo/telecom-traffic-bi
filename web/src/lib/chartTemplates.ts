@@ -1,0 +1,178 @@
+// Visual adaptations of Lieflat Charts F5, F10 and F14 for the existing ECharts runtime.
+// Source: lieflat-charts/templates/basics-gallery.html and color/basics-porcelain.html.
+// PolyForm Noncommercial 1.0.0: /third-party/lieflat-charts-LICENSE.txt
+import { axisLabel, C, splitLine, tooltipBase } from './chart'
+
+export function readableUnit(value: number) {
+  if (!(value > 0)) return 1
+  const power = 10 ** Math.floor(Math.log10(value))
+  const mantissa = value / power
+  return (mantissa <= 1 ? 1 : mantissa <= 2 ? 2 : mantissa <= 5 ? 5 : 10) * power
+}
+
+export interface TickRow {
+  name: string
+  value: number
+  label: string
+  detail: string
+}
+
+export function tickRowsOption(rows: TickRow[], unit: number) {
+  const max = Math.max(unit, ...rows.map(row => row.value))
+  return {
+    animationDuration: 420,
+    grid: { left: 0, right: 66, top: 10, bottom: 8, containLabel: true },
+    tooltip: { ...tooltipBase, formatter: (p: any) => `${p.name}<br/><b>${rows[p.dataIndex]?.detail ?? ''}</b>` },
+    xAxis: { type: 'value', min: 0, max: Math.ceil(max / unit) * unit, show: false },
+    yAxis: {
+      type: 'category', inverse: true, data: rows.map(row => row.name),
+      axisLine: { show: false }, axisTick: { show: false }, axisLabel: { ...axisLabel, margin: 12 },
+    },
+    series: [{
+      id: 'tick-rows', name: '流量', type: 'custom',
+      encode: { x: 0, y: 1 },
+      data: rows.map((row, index) => ({ name: row.name, value: [row.value, index] })),
+      renderItem: (params: any, api: any) => {
+        const value = Number(api.value(0)), index = Number(api.value(1))
+        const [left, y] = api.coord([0, index])
+        const right = api.coord([max, index])[0]
+        const step = api.coord([unit, index])[0] - left
+        const color = index === 0 ? C.primary : '#7096d1'
+        const count = Math.ceil(value / unit)
+        const children: any[] = [{ type: 'line', shape: { x1: left, x2: right, y1: y + 8, y2: y + 8 }, style: { stroke: '#e3e9f2', lineWidth: 1 } }]
+        for (let k = 0; k < count; k++) {
+          const fraction = Math.min(1, Math.max(0, value / unit - k))
+          const x = left + (k + .5) * step
+          children.push({ type: 'line', shape: { x1: x, x2: x, y1: y + 7, y2: y + 7 - fraction * 15 }, style: { stroke: color, lineWidth: Math.max(1.3, Math.min(2.8, step * .35)) } })
+          if ((k + 1) % 5 === 0) children.push({ type: 'circle', shape: { cx: x, cy: y + 12, r: 1 }, style: { fill: '#b0bed0' } })
+        }
+        children.push({ type: 'text', x: api.coord([value, index])[0] + 9, y,
+          style: { text: rows[index]?.label ?? '', fill: index === 0 ? C.text : C.text2, font: '600 12px "Segoe UI", "Microsoft YaHei", sans-serif', verticalAlign: 'middle' } })
+        children.push({ type: 'rect', shape: { x: left, y: y - 14, width: Math.max(20, params.coordSys.width), height: 30 }, style: { fill: 'rgba(0,0,0,0)' } })
+        return { type: 'group', children }
+      },
+    }],
+  } as any
+}
+
+export interface HeatAnim {
+  /** 遮罩行（日期下标，0 在底部），可为小数以补间滑动 */
+  maskRow: number
+  /** 遮罩不透明度 0–1，未选中日期时为 0 */
+  maskAlpha: number
+  /** 圆环中心的小时下标，可为小数 */
+  ringH: number
+  /** 圆环中心的日期下标，可为小数 */
+  ringD: number
+  /** 圆环半径系数，等于峰值点 sqrt(value / max) */
+  ringVF: number
+}
+
+/** 类目轴 band 坐标线性插值，避免依赖 api.coord 对小数下标的支持 */
+function heatBandY(api: any, row: number, lastD: number) {
+  const d0 = Math.max(0, Math.min(lastD, Math.floor(row)))
+  const d1 = Math.min(lastD, d0 + 1)
+  return api.coord([0, d0])[1] + (api.coord([0, d1])[1] - api.coord([0, d0])[1]) * (row - d0)
+}
+
+function heatBandXY(api: any, hour: number, row: number, lastH: number, lastD: number) {
+  const h0 = Math.max(0, Math.min(lastH, Math.floor(hour)))
+  const d0 = Math.max(0, Math.min(lastD, Math.floor(row)))
+  const h1 = Math.min(lastH, h0 + 1)
+  const d1 = Math.min(lastD, d0 + 1)
+  const [x0, y0] = api.coord([h0, d0])
+  const x1 = api.coord([h1, d0])[0]
+  const y1 = api.coord([h0, d1])[1]
+  return [x0 + (x1 - x0) * (hour - h0), y0 + (y1 - y0) * (row - d0)] as const
+}
+
+export function dotHeatOption(values: number[][], hours: string[], days: string[], format: (value: number) => string, anim: HeatAnim) {
+  const max = Math.max(1, ...values.map(point => point[2]))
+  const lastH = hours.length - 1
+  const lastD = days.length - 1
+  const ringAnchor = values.length - 1
+  return {
+    animationDuration: 350,
+    grid: { left: 42, right: 20, top: 12, bottom: 30 },
+    tooltip: { ...tooltipBase, formatter: (p: any) => `${days[p.value[1]]} ${hours[p.value[0]]}<br/><b>${format(p.value[2])}</b>` },
+    xAxis: { type: 'category', data: hours, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { ...axisLabel, interval: 'auto' }, splitLine: { show: false } },
+    yAxis: { type: 'category', data: days, axisLine: { show: false }, axisTick: { show: false }, axisLabel },
+    visualMap: { show: false, type: 'continuous', seriesIndex: 0, dimension: 2, min: 0, max, inRange: { color: ['#bad6eb', '#7096d1', '#334eac'] } },
+    series: [{
+      id: 'dot-heat', type: 'custom', data: values, encode: { x: 0, y: 1, tooltip: 2 },
+      // 遮罩与圆环由外部 rAF 补间逐帧驱动；关闭系列自身动画，
+      // 避免 replaceMerge 重建系列时每帧重放入场动画造成闪烁
+      animation: false,
+      renderItem: (params: any, api: any) => {
+        const h = Number(api.value(0)), d = Number(api.value(1)), value = Number(api.value(2))
+        const [x, y] = api.coord([h, d])
+        const width = Math.abs(api.size([1, 0])[0]), height = Math.abs(api.size([0, 1])[1])
+        const maxR = Math.min(width * .38, height * .36)
+        const radius = maxR * Math.sqrt(value / max)
+        const opacity = 1 - .55 * anim.maskAlpha * Math.min(1, Math.abs(d - anim.maskRow))
+        const children: any[] = []
+        if (anim.maskAlpha > 0) {
+          const maskY = heatBandY(api, anim.maskRow, lastD)
+          children.push({ type: 'rect', shape: { x: x - width / 2, y: maskY - height / 2, width, height }, style: { fill: `rgba(51,78,172,${(.045 * anim.maskAlpha).toFixed(3)})` } })
+        }
+        children.push({ type: 'circle', shape: { cx: x, cy: y, r: value > 0 ? radius : 1 }, style: { fill: value > 0 ? api.visual('color') : '#dce3ec', opacity } })
+        if (params.dataIndex === ringAnchor) {
+          const [ringX, ringY] = heatBandXY(api, anim.ringH, anim.ringD, lastH, lastD)
+          children.push({ type: 'circle', shape: { cx: ringX, cy: ringY, r: maxR * anim.ringVF + 2.5 }, style: { fill: 'transparent', stroke: C.primary, lineWidth: 1, lineDash: [2, 2] } })
+        }
+        return { type: 'group', children }
+      },
+    }],
+  } as any
+}
+
+export interface HistogramBin { start: number; end: number; count: number }
+
+export function utilizationHistogram(values: number[], warn: number, congest: number) {
+  const bins: HistogramBin[] = Array.from({ length: 20 }, (_, i) => ({ start: i * 5, end: (i + 1) * 5, count: 0 }))
+  for (const value of values) bins[Math.max(0, Math.min(19, Math.floor(value / 5)))].count++
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  const median = sorted.length ? (sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2) : 0
+  const max = Math.max(1, ...bins.map(bin => bin.count))
+  const peak = bins.findIndex(bin => bin.count === max)
+  return {
+    bins, median,
+    option: {
+      animationDuration: 350,
+      grid: { left: 4, right: 12, top: 32, bottom: 26, containLabel: true },
+      tooltip: { ...tooltipBase, formatter: (p: any) => {
+        const bin = bins[p.dataIndex]
+        return bin ? `利用率 ${bin.start}%–${bin.end}%${bin.end === 100 ? '（含 100%）' : '（右端不含）'}<br/><b>${bin.count} 个小区</b>` : ''
+      } },
+      xAxis: { type: 'value', min: 0, max: 100, interval: 20, axisLine: { lineStyle: { color: C.border } }, axisTick: { show: true }, axisLabel: { ...axisLabel, formatter: '{value}%' }, splitLine: { show: false } },
+      yAxis: { type: 'value', minInterval: 1, splitNumber: 3, max: Math.ceil(max * 1.22), splitLine, axisLabel },
+      series: [{
+        id: 'utilization-histogram', name: '小区数', type: 'custom', encode: { x: [0, 1], y: 2 },
+        data: bins.map(bin => [bin.start, bin.end, bin.count]),
+        renderItem: (params: any, api: any) => {
+          const count = Number(api.value(2))
+          const [left, base] = api.coord([Number(api.value(0)), 0])
+          const right = api.coord([Number(api.value(1)), 0])[0]
+          const top = api.coord([Number(api.value(0)), count])[1]
+          const width = Math.max(1, right - left - 2)
+          const children: any[] = [{ type: 'rect', shape: { x: left + 1, y: top, width, height: Math.max(0, base - top) }, style: { fill: 'rgba(51,78,172,.055)' } }]
+          for (let k = 0; k < count; k++) {
+            const y = api.coord([0, k + .5])[1]
+            children.push({ type: 'line', shape: { x1: left + 2, x2: right - 2, y1: y, y2: y }, style: { stroke: params.dataIndex === peak ? C.primary : '#7096d1', lineWidth: 1.25 } })
+          }
+          if (params.dataIndex === peak) children.push({ type: 'text', x: (left + right) / 2, y: top - 10, style: { text: String(count), fill: C.primary, font: '700 12px "Segoe UI", sans-serif', align: 'center', verticalAlign: 'bottom' } })
+          children.push({ type: 'rect', shape: { x: left, y: params.coordSys.y, width: Math.max(1, right - left), height: params.coordSys.height }, style: { fill: 'rgba(0,0,0,0)' } })
+          return { type: 'group', children }
+        },
+      }, {
+        id: 'histogram-thresholds', name: '参考阈值', type: 'line', data: [], silent: true,
+        markLine: { symbol: 'none', silent: true, lineStyle: { width: 1, type: 'dashed' }, label: { fontSize: 10, position: 'end', rotate: 0 }, data: [
+          { xAxis: median, lineStyle: { color: C.text2 }, label: { show: false } },
+          { xAxis: warn, lineStyle: { color: C.amber }, label: { formatter: '预警', color: C.amber } },
+          { xAxis: congest, lineStyle: { color: C.red }, label: { formatter: '拥塞', color: C.red } },
+        ] },
+      }],
+    } as any,
+  }
+}

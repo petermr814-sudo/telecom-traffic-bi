@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import Panel from '@/components/Panel.vue'
+import Disclosure from '@/components/Disclosure.vue'
+import ProcessFlow from '@/components/ProcessFlow.vue'
 import Icon from '@/components/Icon.vue'
 import Modal from '@/components/Modal.vue'
 import { useAsync } from '@/lib/useAsync'
@@ -125,31 +127,9 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
       </div>
     </section>
 
-    <Panel title="分布式数据链路" sub="Kafka → HDFS → Spark/MapReduce → HBase → API → 可视化">
-      <template #actions>
-        <span class="chip chip--green"><span class="dot" />链路正常</span>
-        <button class="btn btn--sm" @click="running.length ? null : (ui.tick += 1)"><Icon name="refresh" :size="13" />刷新</button>
-      </template>
-      <div class="dag">
-        <div v-for="(s, i) in pipeline?.stages" :key="s.name" class="stage">
-          <div class="stage-card">
-            <div class="stage-top">
-              <span class="stage-num">0{{ i + 1 }}</span>
-              <span class="dot" style="color: var(--green)" />
-            </div>
-            <strong>{{ s.name }}</strong>
-            <span class="stage-detail">{{ s.detail }}</span>
-            <span class="stage-metric num">{{ s.metric }}</span>
-          </div>
-          <span v-if="i < (pipeline?.stages.length ?? 0) - 1" class="arrow">
-            <Icon name="chevron-right" :size="16" />
-          </span>
-        </div>
-      </div>
-    </Panel>
-
+    <div class="section-heading"><h2>作业运行情况</h2><p>优先关注失败作业与运行中的任务</p></div>
     <div class="grid grid--mid">
-      <Panel title="数据源状态" sub="存储与消息组件">
+      <Panel class="sources-panel" title="数据源状态" sub="存储与消息组件">
         <ul class="sources">
           <li v-for="s in pipeline?.sources" :key="s.name">
             <span class="src-icon"><Icon name="server" :size="15" /></span>
@@ -163,7 +143,7 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
         </ul>
       </Panel>
 
-      <Panel title="作业列表" sub="点击查看输出与日志" flush>
+      <Panel class="jobs-panel" title="作业列表" sub="点击查看输出与日志" flush>
         <template #actions>
           <button class="btn btn--sm" :disabled="busy" @click="runAll"><Icon name="play" :size="13" />重跑失败</button>
         </template>
@@ -204,8 +184,18 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
       </Panel>
     </div>
 
+    <div class="section-heading"><h2>数据链路</h2><p>从采集到可视化的处理过程</p></div>
+    <Panel title="分布式数据链路" sub="Kafka → HDFS → Spark/MapReduce → HBase → API → 可视化">
+      <template #actions>
+        <span class="chip chip--green"><span class="dot" />链路正常</span>
+        <button class="btn btn--sm" @click="running.length ? null : (ui.tick += 1)"><Icon name="refresh" :size="13" />刷新</button>
+      </template>
+      <ProcessFlow :stages="pipeline?.stages ?? []" />
+    </Panel>
+
+    <Disclosure title="接口契约与指标说明" sub="需要联调或核对统计口径时展开">
     <div class="grid grid--bottom">
-      <Panel title="接口契约" sub="后端按此实现即可与前端联调">
+      <Panel title="接口契约" sub="后端联调参考">
         <template #actions>
           <span class="chip chip--blue">v1</span>
         </template>
@@ -221,7 +211,7 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
         </p>
       </Panel>
 
-      <Panel title="指标口径" sub="答辩时可直接引用">
+      <Panel title="指标口径" sub="主要指标的计算方式">
         <dl class="defs">
           <div><dt>忙时利用率</dt><dd>忙时下行速率 ÷ 小区带宽，≥ {{ ui.settings.warn }}% 预警，≥ {{ ui.settings.congest }}% 拥塞</dd></div>
           <div><dt>5G 分流比</dt><dd>5G 网络承载流量 ÷ 全网移动数据流量</dd></div>
@@ -231,6 +221,7 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
         </dl>
       </Panel>
     </div>
+    </Disclosure>
   </div>
 
   <div v-else class="skeleton-page">
@@ -266,9 +257,9 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
 </template>
 
 <style scoped>
-.page { display: flex; flex-direction: column; gap: 12px; }
+.page { display: flex; flex-direction: column; gap: 24px; }
 
-.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; }
 
 .stat {
   display: flex;
@@ -326,8 +317,8 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
 .stage-metric { font-size: 10px; color: var(--primary); margin-top: 3px; }
 .arrow { color: var(--border-strong); flex-shrink: 0; }
 
-.grid { display: grid; gap: 12px; }
-.grid--mid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.8fr); }
+.grid { display: grid; gap: 24px; }
+.grid--mid { grid-template-columns: minmax(0, 2.4fr) minmax(240px, 1fr); }
 .grid--bottom { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
 
 .sources { display: flex; flex-direction: column; gap: 4px; }
@@ -372,12 +363,12 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
 .error-card p { color: var(--text-3); font-size: 12px; margin-top: 2px; }
 .error-card .btn { margin-left: auto; }
 
-.skeleton-page { display: flex; flex-direction: column; gap: 12px; }
+.skeleton-page { display: flex; flex-direction: column; gap: 24px; }
 .stats-skel { height: 84px; }
 .dag-skel { height: 150px; }
 .table-skel { height: 380px; }
 
-@media (max-width: 1280px) {
+@media (max-width: 1180px) {
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grid--mid, .grid--bottom { grid-template-columns: minmax(0, 1fr); }
   .dag { flex-wrap: wrap; }
@@ -385,4 +376,36 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
   .endpoints li { grid-template-columns: 34px 1fr; }
   .desc { display: none; }
 }
+
+.stats { gap: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.stat { border: 0; border-radius: 0; box-shadow: none; background: transparent; padding: 24px; min-height: 122px; }
+.stat + .stat { border-left: 1px solid var(--border); }
+.stat:hover { transform: none; box-shadow: none; }
+.stat-sub { font-size: 11px; }
+@media (max-width: 1180px) {
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat { padding: 20px 16px; }
+  .stat:nth-child(3) { border-left: 0; border-top: 1px solid var(--border); }
+  .stat:nth-child(4) { border-top: 1px solid var(--border); }
+}
+
+.stat { display: grid; grid-template-columns: 32px 1fr; align-content: center; gap: 8px 12px; }
+.stat-icon { grid-row: 1 / 3; }
+.stat-sub { position: static; grid-column: 2; }
+.stat > div strong { font-size: 28px; margin-top: 5px; }
+.stat > div span { font-size: 12px; }
+.jobs-panel { order: 0; }
+.sources-panel { order: 1; }
+.stage-card { padding: 18px; background: var(--surface-2); border-color: transparent; border-radius: 12px; }
+.stage-detail { font-size: 11px; margin-top: 6px; }
+.stage-metric { font-size: 12px; margin-top: 12px; }
+.src-body strong { font-size: 13px; }
+.src-body .mono, .src-detail { font-size: 11px; }
+.sources li { padding: 16px 0; }
+.disclosure :deep(.panel) { border: 0; box-shadow: none; border-radius: 0; }
+.disclosure :deep(.panel-head) { padding-left: 0; padding-right: 0; }
+.disclosure :deep(.panel-body) { padding-left: 0; padding-right: 0; }
+@media (max-width: 1120px) { .grid--mid { grid-template-columns: 1fr; } .dag { flex-wrap: wrap; gap: 14px; } .stage { flex-basis: 30%; min-width: 150px; } }
+@media (max-width: 680px) { .grid--bottom { grid-template-columns: 1fr; } .stage { flex-basis: 100%; } .arrow { display: none; } }
+
 </style>

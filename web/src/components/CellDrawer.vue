@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import type { EChartsOption } from 'echarts'
 import Drawer from './Drawer.vue'
 import Icon from './Icon.vue'
 import BaseChart from './BaseChart.vue'
+import TickGauge from './TickGauge.vue'
+import { axisLabel, C } from '@/lib/chart'
 import { fmtBytes, fmtInt, fmtRate } from '@/lib/format'
 import { toast, ui } from '@/stores/ui'
 
@@ -11,22 +14,22 @@ const cell = computed(() => ui.cellDetail)
 
 const days = ['11-02', '11-03', '11-04', '11-05', '11-06', '11-07', '11-08']
 
-const trendOption = computed(() => ({
+const trendOption = computed<EChartsOption>(() => ({
   animationDuration: 500,
-  grid: { left: 30, right: 10, top: 16, bottom: 22 },
+  grid: { left: 4, right: 14, top: 20, bottom: 8, containLabel: true },
   tooltip: {
     trigger: 'axis',
     backgroundColor: '#0c1526',
     borderWidth: 0,
     textStyle: { color: '#fff', fontSize: 11 },
-    formatter: (p: any[]) => `${p[0].axisValue}<br/>忙时利用率 <b>${p[0].value}%</b>`
+    formatter: (params) => { const p = Array.isArray(params) ? params[0] : params; return `${p.name}<br/>忙时利用率 <b>${p.value}%</b>` }
   },
   xAxis: {
     type: 'category',
     data: days,
     axisLine: { lineStyle: { color: '#e6ebf4' } },
-    axisTick: { show: false },
-    axisLabel: { color: '#8b97ad', fontSize: 10 }
+    axisTick: { show: true, length: 6, lineStyle: { color: C.border } },
+    axisLabel: { ...axisLabel, fontSize: 10 }
   },
   yAxis: {
     type: 'value',
@@ -39,26 +42,17 @@ const trendOption = computed(() => ({
   series: [
     {
       type: 'line',
-      smooth: true,
+      smooth: false,
       symbol: 'circle',
       symbolSize: 5,
       data: cell.value?.trend ?? [],
-      lineStyle: { color: '#1f5eff', width: 2 },
-      itemStyle: { color: '#1f5eff' },
-      areaStyle: {
-        color: {
-          type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-          colorStops: [
-            { offset: 0, color: 'rgba(31,94,255,.18)' },
-            { offset: 1, color: 'rgba(31,94,255,0)' }
-          ]
-        }
-      },
+      lineStyle: { color: C.primary, width: 1.6 },
+      itemStyle: { color: C.primary },
       markLine: {
         silent: true,
         symbol: 'none',
         lineStyle: { color: '#dc2f2f', type: 'dashed', width: 1 },
-        label: { formatter: '拥塞', color: '#dc2f2f', fontSize: 9 },
+        label: { formatter: '拥塞', color: '#dc2f2f', fontSize: 9, position: 'insideEndTop' },
         data: [{ yAxis: ui.settings.congest }]
       }
     }
@@ -99,11 +93,7 @@ async function copyId() {
         </span>
       </div>
 
-      <div class="hero">
-        <div class="hero-value num">{{ cell.util.toFixed(1) }}<span>%</span></div>
-        <div class="hero-label">忙时利用率</div>
-        <div class="hero-bar"><span :style="{ width: `${Math.min(100, cell.util)}%`, background: cell.status === '拥塞' ? 'var(--red)' : cell.status === '预警' ? 'var(--amber)' : 'var(--primary)' }" /></div>
-      </div>
+      <TickGauge :value="cell.util" :warn="ui.settings.warn" :congest="ui.settings.congest" />
 
       <div class="metrics">
         <div class="metric"><span>带宽</span><strong class="num">{{ fmtRate(cell.bandwidthMbps * 1e6) }}</strong></div>
@@ -115,7 +105,7 @@ async function copyId() {
       </div>
 
       <div class="chart-title">近 7 天忙时利用率</div>
-      <BaseChart :option="trendOption" height="160px" />
+      <BaseChart data-template="F2" :option="trendOption" height="160px" />
 
       <div class="note">
         <Icon name="info" :size="14" />

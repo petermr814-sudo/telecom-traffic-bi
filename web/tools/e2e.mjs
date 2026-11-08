@@ -1,4 +1,5 @@
 import puppeteer from 'puppeteer-core'
+const BASE = process.env.SHOT_BASE || 'http://127.0.0.1:5178/'
 
 const browser = await puppeteer.launch({
   executablePath: process.env.CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
@@ -27,7 +28,7 @@ const check = (name, ok, detail = '') => {
   console.log(ok ? 'PASS' : 'FAIL', name, detail)
 }
 
-await page.goto('http://127.0.0.1:5178/#/overview', { waitUntil: 'networkidle0' })
+await page.goto(`${BASE}#/overview`, { waitUntil: 'networkidle0' })
 await sleep(1200)
 const kpi0 = await text('.kpi-value')
 await clickText('近7天')
@@ -86,7 +87,7 @@ await clickText('下发工单')
 await sleep(400)
 check('工单下发提示', await exists('.toast--success'))
 
-await page.goto('http://127.0.0.1:5178/#/realtime', { waitUntil: 'networkidle0' })
+await page.goto(`${BASE}#/realtime`, { waitUntil: 'networkidle0' })
 await sleep(900)
 const consumersBefore = await page.evaluate(() => document.querySelectorAll('.consumer').length)
 await clickText('模拟缩容')
@@ -97,14 +98,14 @@ await clickText('暂停')
 const playBtn = await page.evaluate(() => [...document.querySelectorAll('button')].some((b) => b.textContent.includes('继续')))
 check('实时流可暂停', playBtn)
 
-await page.goto('http://127.0.0.1:5178/#/pipeline', { waitUntil: 'networkidle0' })
+await page.goto(`${BASE}#/pipeline`, { waitUntil: 'networkidle0' })
 await sleep(700)
 await clickText('重跑失败')
 await sleep(2500)
 const runningToast = await page.evaluate(() => [...document.querySelectorAll('.toast')].length)
 check('作业重跑有反馈', runningToast > 0)
 
-await page.goto('http://127.0.0.1:5178/#/overview', { waitUntil: 'networkidle0' })
+await page.goto(`${BASE}#/overview`, { waitUntil: 'networkidle0' })
 await sleep(900)
 await page.click('.conn-btn')
 await sleep(300)

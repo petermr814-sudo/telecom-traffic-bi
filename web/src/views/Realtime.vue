@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import Panel from '@/components/Panel.vue'
 import BaseChart from '@/components/BaseChart.vue'
 import Icon from '@/components/Icon.vue'
+import TickMeter from '@/components/TickMeter.vue'
 import { fmtBytes, fmtRate } from '@/lib/format'
 import { toast, ui } from '@/stores/ui'
 
@@ -156,16 +157,21 @@ function onFsChange() {
   immersive.value = Boolean(document.fullscreenElement)
 }
 
-const chartOption = computed(() => ({
-  animation: false,
-  grid: { left: 6, right: 14, top: 26, bottom: 0, containLabel: true },
+const partitionShare = (rate: number) => rate / Math.max(1, partitions.value.reduce((sum, item) => sum + item.rate, 0)) * 100
+
+const chartOption = computed<import('echarts').EChartsOption>(() => ({
+  animation: true,
+  animationDuration: 0,
+  animationDurationUpdate: 260,
+  animationEasingUpdate: 'linear',
+  grid: { left: 6, right: 88, top: 26, bottom: 0, containLabel: true },
   tooltip: {
     trigger: 'axis',
     backgroundColor: 'rgba(7,13,25,0.95)',
     borderWidth: 1,
     borderColor: '#1b2b47',
     textStyle: { color: '#e9f1ff', fontSize: 11 },
-    formatter: (ps: any[]) => `${ps[0].axisValue}<br/><b style="color:#22d3ee">${ps[0].value} Gbps</b>`
+    formatter: (params) => { const p = Array.isArray(params) ? params[0] : params; return `${p.name}<br/><b style="color:#bad6eb">${p.value} Gbps</b>` }
   },
   xAxis: {
     type: 'category',
@@ -173,7 +179,7 @@ const chartOption = computed(() => ({
     data: points.value.map((p) => p.t),
     axisLine: { lineStyle: { color: '#1b2b47' } },
     axisTick: { show: false },
-    axisLabel: { color: '#6d81a3', fontSize: 9.5, interval: 11 }
+    axisLabel: { color: '#8096b7', fontSize: 11, interval: 'auto', hideOverlap: true }
   },
   yAxis: {
     type: 'value',
@@ -184,17 +190,19 @@ const chartOption = computed(() => ({
   },
   series: [
     {
+      id: 'live-rate',
       type: 'line',
       showSymbol: false,
       smooth: 0.25,
       data: points.value.map((p) => p.v),
-      lineStyle: { width: 2, color: '#22d3ee', shadowColor: 'rgba(34,211,238,0.5)', shadowBlur: 10 },
+      lineStyle: { width: 2.2, color: '#bad6eb' },
+      endLabel: { show: true, formatter: (p: any) => `${Number(p.value).toFixed(2)} G`, color: '#bad6eb', fontSize: 13, fontWeight: 700, distance: 10 },
       areaStyle: {
         color: {
           type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
           colorStops: [
-            { offset: 0, color: 'rgba(34,211,238,0.28)' },
-            { offset: 1, color: 'rgba(34,211,238,0)' }
+            { offset: 0, color: 'rgba(112,150,209,0.18)' },
+            { offset: 1, color: 'rgba(112,150,209,0)' }
           ]
         }
       },
@@ -202,10 +210,14 @@ const chartOption = computed(() => ({
         silent: true,
         symbol: 'none',
         lineStyle: { color: '#f87171', type: 'dashed', width: 1 },
-        label: { formatter: '容量门限 15 Gbps', color: '#f87171', fontSize: 9, position: 'insideEndTop' },
+        label: { formatter: '门限 15 Gbps', color: '#f87171', fontSize: 9, position: 'insideEndTop' },
         data: [{ yAxis: capacity }]
       }
     }
+  ],
+  media: [
+    { query: { maxWidth: 360 }, option: { grid: { right: 12 }, series: [{ id: 'live-rate', endLabel: { show: false } }] } },
+    { option: { grid: { right: 88 }, series: [{ id: 'live-rate', endLabel: { show: true } }] } },
   ]
 }))
 
@@ -238,7 +250,7 @@ const totalMsg = computed(() => msgRate.value.toFixed(1))
         <span class="live"><span class="live-dot" />LIVE</span>
         <div>
           <h2>实时流量监控</h2>
-          <p>Kafka traffic-rt · 消费组 traffic-rt-group · {{ clock }}</p>
+          <p>每 2 秒更新 · {{ clock }}</p>
         </div>
       </div>
       <div class="rt-actions">
@@ -280,45 +292,30 @@ const totalMsg = computed(() => msgRate.value.toFixed(1))
       </div>
     </section>
 
+    <div class="rt-section"><h3>实时速率与告警</h3><span>观察当前网络是否稳定</span></div>
     <div class="rt-grid">
-      <Panel title="实时下行速率" sub="每 2 秒聚合一次 · 近 2 分钟">
+      <Panel data-template="G17" title="实时下行速率" sub="每 2 秒聚合一次 · 近 2 分钟">
         <template #actions>
           <span class="rt-legend"><i />Gbps</span>
         </template>
-        <BaseChart :option="chartOption" height="266px" />
+        <BaseChart :option="chartOption" height="300px" />
       </Panel>
 
-      <Panel title="消费组分区分配" sub="Kafka 分区级负载均衡">
-        <template #actions>
-          <button class="btn btn--sm" @click="simulateScale">
-            {{ consumers.length === 3 ? '模拟缩容' : '恢复 3 消费者' }}
-          </button>
-        </template>
-        <div class="consumers">
-          <div v-for="c in consumers" :key="c.id" class="consumer">
-            <span class="c-dot" />
-            <div class="c-body">
-              <strong>{{ c.id }}</strong>
-              <span>{{ c.host }} · {{ partitions.filter((p) => p.owner === c.id).length }} 个分区</span>
+      <Panel title="实时告警" sub="最近 10 分钟">
+        <ul class="rt-alerts">
+          <li v-for="(a, i) in alerts" :key="i">
+            <span class="rt-level" :class="`is-${a.level}`">{{ a.level }}</span>
+            <div>
+              <p>{{ a.text }}</p>
+              <span>{{ a.time }}</span>
             </div>
-            <span class="chip chip--green">在线</span>
-          </div>
-        </div>
-        <div class="partitions">
-          <div v-for="p in partitions" :key="p.id" class="partition">
-            <span class="p-id mono">P{{ p.id }}</span>
-            <span class="p-bar"><i :style="{ width: `${Math.min(100, p.rate * 2)}%` }" /></span>
-            <span class="p-owner">{{ p.owner }}</span>
-            <span class="p-lag num">{{ p.lag }} 条</span>
-          </div>
-        </div>
-        <div class="rebalance">
-          <Icon name="layers" :size="13" />
-          最近一次再均衡：{{ consumers.length === 3 ? '3 个消费者各持 1 个分区' : 'worker-3 退出，worker-1 接管分区 2' }}
-        </div>
+          </li>
+        </ul>
+        <button class="btn btn--sm rt-all" @click="ui.alertsOpen = true">打开告警中心</button>
       </Panel>
     </div>
 
+    <div class="rt-section"><h3>消息与消费组</h3><span>排查数据处理情况</span></div>
     <div class="rt-bottom">
       <Panel title="实时消息流" sub="Kafka 消费记录 · 最新在上" flush>
         <div class="table-wrap">
@@ -342,17 +339,36 @@ const totalMsg = computed(() => msgRate.value.toFixed(1))
         </div>
       </Panel>
 
-      <Panel title="实时告警" sub="最近 10 分钟">
-        <ul class="rt-alerts">
-          <li v-for="(a, i) in alerts" :key="i">
-            <span class="rt-level" :class="`is-${a.level}`">{{ a.level }}</span>
-            <div>
-              <p>{{ a.text }}</p>
-              <span>{{ a.time }}</span>
+      <Panel title="消费组分区分配" sub="Kafka 分区级负载均衡">
+        <template #actions>
+          <button class="btn btn--sm" @click="simulateScale">
+            {{ consumers.length === 3 ? '模拟缩容' : '恢复 3 消费者' }}
+          </button>
+        </template>
+        <div class="consumers">
+          <div v-for="c in consumers" :key="c.id" class="consumer">
+            <span class="c-dot" />
+            <div class="c-body">
+              <strong>{{ c.id }}</strong>
+              <span>{{ c.host }} · {{ partitions.filter((p) => p.owner === c.id).length }} 个分区</span>
             </div>
-          </li>
-        </ul>
-        <button class="btn btn--sm rt-all" @click="ui.alertsOpen = true">打开告警中心</button>
+            <span class="chip chip--green">在线</span>
+          </div>
+        </div>
+        <div class="partitions">
+          <div v-for="p in partitions" :key="p.id" class="partition">
+            <span class="p-id mono">P{{ p.id }}</span>
+            <TickMeter :value="partitionShare(p.rate)" :label="`分区 ${p.id} 消息份额`" />
+            <span class="p-share num">{{ partitionShare(p.rate).toFixed(1) }}%</span>
+            <span class="p-owner">{{ p.owner }}</span>
+            <span class="p-lag num">滞后 {{ p.lag }} 条</span>
+          </div>
+        </div>
+        <p class="chart-note">每刻度为当前总消息速率的 4% · 末刻度按比例显示</p>
+        <div class="rebalance">
+          <Icon name="layers" :size="13" />
+          最近一次再均衡：{{ consumers.length === 3 ? '3 个消费者各持 1 个分区' : 'worker-3 退出，worker-1 接管分区 2' }}
+        </div>
       </Panel>
     </div>
   </div>
@@ -392,7 +408,7 @@ const totalMsg = computed(() => msgRate.value.toFixed(1))
 .rt-title {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 24px;
 }
 
 .live {
@@ -489,14 +505,14 @@ const totalMsg = computed(() => msgRate.value.toFixed(1))
 .rt-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr);
-  gap: 12px;
+  gap: 24px;
   margin-bottom: 12px;
 }
 
 .rt-bottom {
   display: grid;
   grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
-  gap: 12px;
+  gap: 24px;
 }
 
 .rt-legend {
@@ -678,4 +694,45 @@ const totalMsg = computed(() => msgRate.value.toFixed(1))
   .rt-grid, .rt-bottom { grid-template-columns: minmax(0, 1fr); }
   .rt-head { align-items: flex-start; flex-direction: column; }
 }
+
+.rt { padding: 28px; background: #0c1423; border: 0; border-radius: 22px; min-height: auto; }
+.rt-head { margin-bottom: 26px; flex-wrap: wrap; gap: 20px; }
+.rt-kpis { gap: 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); margin-bottom: 28px; }
+.rt-kpi { border: 0; border-radius: 0; background: transparent; padding: 24px 20px; }
+.rt-kpi:first-child { padding-left: 0; }
+.rt-kpi + .rt-kpi { border-left: 1px solid var(--border); }
+.rt-kpi-value b { font-size: 34px; }
+.rt-kpi-label { font-size: 12px; }
+.rt-kpi-foot { margin-top: 10px; font-size: 11px; }
+.rt-section { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin: 28px 0 16px; }
+.rt-section h3 { font-size: 14px; font-weight: 600; }
+.rt-section span { font-size: 12px; color: var(--text-3); }
+.rt-grid { grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr); }
+.rt-bottom { grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr); }
+.rt :deep(.panel) { background: #101c2e; box-shadow: none; }
+.rt-alerts { gap: 16px; }
+.rt-alerts li { padding: 14px; background: transparent; }
+.rt-alerts p { font-size: 12px; line-height: 1.7; }
+.consumer { padding: 12px; }
+@media (max-width: 1200px) { .rt-grid, .rt-bottom { grid-template-columns: 1fr; } }
+@media (max-width: 760px) {
+  .rt { padding: 18px; }
+  .rt-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rt-kpi { padding: 20px 12px; }
+  .rt-kpi:first-child { padding-left: 12px; }
+  .rt-kpi:nth-child(3) { border-left: 0; border-top: 1px solid var(--border); }
+  .rt-kpi:nth-child(4) { border-top: 1px solid var(--border); }
+  .rt-kpi-value b { font-size: 26px; }
+  .rt-section { flex-direction: column; gap: 6px; }
+  .rt-actions { flex-wrap: wrap; }
+}
+
+.rt { --primary: #bad6eb; }
+.rt-legend i { background: #bad6eb; }
+.partition { grid-template-columns: 24px minmax(0, 1fr) 64px; gap: 5px 8px; }
+.partitions { gap: 15px; }
+.p-owner { grid-column: 2; }
+.p-lag { grid-column: 3; }
+.p-share { color: #bad6eb; font-size: 10px; text-align: right; }
+.p-id { color: #bad6eb; }
 </style>

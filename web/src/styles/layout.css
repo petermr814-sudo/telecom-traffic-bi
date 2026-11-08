@@ -1,0 +1,21 @@
+.section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 12px;
+}
+.section-heading h2 { font-size: 15px; font-weight: 650; letter-spacing: -.02em; }
+.section-heading p { color: var(--text-3); font-size: 12px; }
+.metric-strip { display: flex; flex-wrap: wrap; gap: 12px 28px; padding: 0 4px; color: var(--text-2); font-size: 12px; }
+.metric-strip strong { margin-left: 8px; color: var(--text); font-size: 14px; font-weight: 600; }
+.metric-strip .delta { margin-left: 6px; font-size: 11px; }
+.chart-note { color: var(--text-3); font-size: 11px; line-height: 1.7; margin-top: 14px; }
+@media (max-width: 760px) {
+  .section-heading { align-items: flex-start; flex-direction: column; gap: 5px; }
+  .panel-head { flex-wrap: wrap; gap: 16px; padding: 20px 18px 0; }
+  .panel-body { padding: 18px; }
+  .panel-actions { max-width: 100%; flex-wrap: wrap; }
+  .table { min-width: 560px; }
+  .table-wrap { max-width: 100%; }
+}

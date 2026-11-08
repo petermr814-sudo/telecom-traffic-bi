@@ -1,18 +1,18 @@
 :root {
-  --bg: #f2f5fa;
+  --bg: #f5f6f8;
   --surface: #ffffff;
   --surface-2: #f7f9fc;
   --surface-3: #eef3fb;
   --surface-hover: #f1f5fd;
   --border: #e6ebf4;
   --border-strong: #d6dfec;
-  --text: #0c1526;
-  --text-2: #51607a;
-  --text-3: #8b97ad;
-  --primary: #1f5eff;
-  --primary-hover: #1749d6;
-  --primary-soft: #edf2ff;
-  --primary-border: #cddcff;
+  --text: #1c2638;
+  --text-2: #58657a;
+  --text-3: #778399;
+  --primary: #334eac;
+  --primary-hover: #263e91;
+  --primary-soft: #edf1fa;
+  --primary-border: #d6def0;
   --green: #0e9f6e;
   --green-soft: #e8f7f1;
   --amber: #d97a00;
@@ -26,13 +26,13 @@
   --shadow-sm: 0 1px 2px rgba(13, 22, 41, 0.04);
   --shadow-md: 0 10px 30px rgba(13, 22, 41, 0.08);
   --shadow-pop: 0 16px 48px rgba(13, 22, 41, 0.14);
-  --radius: 12px;
+  --radius: 18px;
   --radius-sm: 8px;
   --radius-xs: 6px;
   --font: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --mono: "SFMono-Regular", "JetBrains Mono", Consolas, "Liberation Mono", monospace;
-  --sidebar-w: 232px;
-  --topbar-h: 64px;
+  --sidebar-w: 208px;
+  --topbar-h: 72px;
   color-scheme: light;
 }
 

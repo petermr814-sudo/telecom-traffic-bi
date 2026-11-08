@@ -9,7 +9,8 @@ import { useAsync } from '@/lib/useAsync'
 import { api } from '@/api/client'
 import type { CellRow } from '@/api/types'
 import { fmtBytes, fmtCount, fmtRate, hourLabel, splitBytes, splitRate, RANGE_LABEL } from '@/lib/format'
-import { axisLabel, C, chartPalette, gridBase, splitLine, tooltipBase } from '@/lib/chart'
+import { axisLabel, C, gridBase, splitLine, tooltipBase } from '@/lib/chart'
+import { readableUnit, tickRowsOption } from '@/lib/chartTemplates'
 import { downloadFile, toCsv, toast, ui } from '@/stores/ui'
 
 const router = useRouter()
@@ -56,8 +57,8 @@ const trendOption = computed(() => {
       boundaryGap: false,
       data: hours,
       axisLine: { lineStyle: { color: C.border } },
-      axisTick: { show: false },
-      axisLabel: { ...axisLabel, interval: 2 }
+      axisTick: { show: true, interval: 0, length: 7, lineStyle: { color: C.border } },
+      axisLabel: { ...axisLabel, interval: 'auto' }
     },
     yAxis: {
       type: 'value',
@@ -68,20 +69,13 @@ const trendOption = computed(() => {
       {
         name: '本期',
         type: 'line',
-        smooth: 0.35,
-        showSymbol: false,
+        smooth: false,
+        showSymbol: true,
+        symbol: 'circle',
+        symbolSize: 4,
         data: d.hourly,
-        lineStyle: { width: 2.4, color: C.primary },
+        lineStyle: { width: 1.8, color: C.primary },
         itemStyle: { color: C.primary },
-        areaStyle: {
-          color: {
-            type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [
-              { offset: 0, color: 'rgba(31,94,255,0.20)' },
-              { offset: 1, color: 'rgba(31,94,255,0)' }
-            ]
-          }
-        },
         markPoint: {
           symbol: 'circle',
           symbolSize: 9,
@@ -104,7 +98,7 @@ const trendOption = computed(() => {
         },
         markArea: {
           silent: true,
-          itemStyle: { color: 'rgba(31,94,255,0.05)' },
+          itemStyle: { color: 'rgba(51,78,172,0.05)' },
           label: { show: false },
           data: [[{ xAxis: hours[Math.max(0, d.peakIndex - 1)] }, { xAxis: hours[Math.min(23, d.peakIndex + 1)] }]]
         }
@@ -113,59 +107,23 @@ const trendOption = computed(() => {
         ? [{
             name: '上期',
             type: 'line',
-            smooth: 0.35,
-            showSymbol: false,
+            smooth: false,
+            showSymbol: true,
+        symbol: 'circle',
+        symbolSize: 4,
             data: d.compare,
             lineStyle: { width: 1.4, type: 'dashed', color: '#a9b8d3' },
-            itemStyle: { color: '#a9b8d3' }
+            itemStyle: { color: '#fff', borderColor: '#a9b8d3', borderWidth: 1 }
           }]
         : [])
     ]
   } as any
 })
 
-const donutOption = computed(() => {
-  const d = data.value
-  if (!d) return {}
-  return {
-    animationDuration: 600,
-    color: chartPalette,
-    tooltip: {
-      ...tooltipBase,
-      formatter: (p: any) => `${p.name}<br/><b>${fmtBytes(p.value)}</b> · ${p.percent}%`
-    },
-    series: [
-      {
-        type: 'pie',
-        radius: ['62%', '84%'],
-        center: ['50%', '50%'],
-        avoidLabelOverlap: true,
-        itemStyle: { borderColor: '#fff', borderWidth: 2, borderRadius: 3 },
-        label: { show: false },
-        emphasis: { scale: true, scaleSize: 4 },
-        data: d.regionShare.map((r) => ({ name: r.region, value: r.bytes }))
-      }
-    ],
-    graphic: [
-      { type: 'text', left: 'center', top: '42%', style: { text: '总流量', fill: '#8b97ad', fontSize: 10.5, textAlign: 'center' } },
-      { type: 'text', left: 'center', top: '50%', style: { text: fmtBytes(d.kpi.totalBytes, 1), fill: '#0c1526', fontSize: 17, fontWeight: 600, textAlign: 'center' } }
-    ]
-  } as any
-})
-
-const insights = computed(() => {
-  const d = data.value
-  if (!d) return []
-  const avg = d.kpi.totalBytes / 24
-  const ratio = (d.kpi.peakBps / Math.max(1, (avg * 8) / 3600)).toFixed(1)
-  const top = d.regionShare[0]
-  const congested = Math.round((d.kpi.busyCellRatio / 100) * 420)
-  return [
-    { icon: 'clock', title: `峰值出现在 ${peakLabel.value}`, desc: `峰值速率 ${fmtRate(d.kpi.peakBps)}，峰均比 ${ratio}×` },
-    { icon: 'map', title: `${top.region} 流量最高`, desc: `占全网 ${top.share.toFixed(1)}%，约 ${fmtBytes(top.bytes, 0)}` },
-    { icon: 'tower', title: `${congested} 个小区进入忙时高负载`, desc: `占重点小区 ${d.kpi.busyCellRatio.toFixed(1)}%，建议关注扩容` }
-  ]
-})
+const regionTickUnit = computed(() => readableUnit(Math.max(0, ...(data.value?.regionShare ?? []).map(row => row.bytes)) / 36))
+const regionRankOption = computed(() => tickRowsOption((data.value?.regionShare ?? []).map(row => ({
+  name: row.region, value: row.bytes, label: `${row.share.toFixed(1)}%`, detail: `${fmtBytes(row.bytes)} · ${row.share.toFixed(1)}%`,
+})), regionTickUnit.value))
 
 const rangeLabel = computed(() => RANGE_LABEL[ui.range])
 
@@ -220,7 +178,6 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
           :delta="data.kpi.delta.total"
           icon="wifi"
           tone="blue"
-          :spark="data.hourly"
         />
         <KpiCard
           label="活跃用户"
@@ -229,7 +186,6 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
           :delta="data.kpi.delta.users"
           icon="user"
           tone="teal"
-          :spark="data.hourly"
         />
         <KpiCard
           label="峰值速率"
@@ -238,47 +194,18 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
           :delta="data.kpi.delta.peak"
           icon="activity"
           tone="violet"
-          :spark="data.hourly"
-        />
-        <KpiCard
-          label="5G 分流比"
-          :value="data.kpi.fiveGShare.toFixed(1)"
-          unit="%"
-          :delta="data.kpi.delta.fiveG"
-          icon="zap"
-          tone="amber"
-          :spark="data.hourly"
-        />
-        <KpiCard
-          label="忙时小区占比"
-          :value="data.kpi.busyCellRatio.toFixed(1)"
-          unit="%"
-          :delta="data.kpi.delta.busy"
-          icon="tower"
-          tone="red"
-          :spark="data.hourly"
-          :positive-is-good="false"
         />
       </section>
 
-      <div class="insights-head">
-        <h2>关键洞察</h2>
-        <span>基于当前筛选自动生成 · {{ rangeLabel }}</span>
+      <div class="metric-strip">
+        <span>5G 分流比<strong class="num">{{ data.kpi.fiveGShare.toFixed(1) }}%</strong></span>
+        <span>忙时高负载占比<strong class="num">{{ data.kpi.busyCellRatio.toFixed(1) }}%</strong></span>
+        <span class="overview-note"><Icon name="clock" :size="14" />峰值出现在 {{ peakLabel }}</span>
       </div>
 
-      <section class="insights" aria-label="关键结论">
-        <div v-for="(it, i) in insights" :key="i" class="insight">
-          <span class="insight-icon"><Icon :name="it.icon" :size="15" /></span>
-          <div>
-            <strong>{{ it.title }}</strong>
-            <p>{{ it.desc }}</p>
-          </div>
-          <span class="insight-index">0{{ i + 1 }}</span>
-        </div>
-      </section>
-
+      <div class="section-heading"><h2>流量表现</h2><p>{{ rangeLabel }} · {{ ui.region === 'all' ? '全国' : ui.region }}</p></div>
       <div class="grid grid--main">
-        <Panel title="24 小时流量趋势" :sub="`${ui.region === 'all' ? '全国' : ui.region} · ${rangeLabel} · 小时粒度`">
+        <Panel data-template="F2" title="24 小时流量趋势" :sub="`${ui.region === 'all' ? '全国' : ui.region} · ${rangeLabel} · 小时粒度`">
           <template #actions>
             <span class="legend-dot"><span class="dot" style="background: var(--primary)" />本期</span>
             <span v-if="ui.compare" class="legend-dot"><span class="dot" style="background: #a9b8d3" />上期</span>
@@ -286,29 +213,23 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
               明细<Icon name="chevron-right" :size="12" />
             </button>
           </template>
-          <BaseChart :option="trendOption" height="288px" :replace-merge="['series']" />
+          <BaseChart :option="trendOption" height="290px" :replace-merge="['series']" />
+          <p class="chart-note">每个点为一个小时的流量读数<span v-if="ui.compare"> · 空心点为上期</span></p>
         </Panel>
 
-        <Panel title="区域流量分布" sub="按大区拆分 · 共 31 省">
+        <Panel data-template="F5" title="区域流量排名" sub="按流量排序 · 7 个大区">
           <template #actions>
             <button class="btn btn--sm" @click="router.push('/region')">
               地图<Icon name="chevron-right" :size="12" />
             </button>
           </template>
-          <div class="donut-wrap">
-            <BaseChart :option="donutOption" height="216px" />
-            <ul class="donut-legend">
-              <li v-for="(r, i) in data.regionShare" :key="r.region">
-                <span class="dot" :style="{ background: chartPalette[i] }" />
-                <span class="name">{{ r.region }}</span>
-                <span class="val num">{{ r.share.toFixed(1) }}%</span>
-                <span class="bytes num">{{ fmtBytes(r.bytes, 0) }}</span>
-              </li>
-            </ul>
-          </div>
+          <div class="region-lead"><strong class="num">{{ data.regionShare[0]?.share.toFixed(1) }}<small>%</small></strong><span>{{ data.regionShare[0]?.region }}贡献最多流量</span></div>
+          <BaseChart :option="regionRankOption" height="224px" />
+          <p class="chart-note">每刻度 {{ fmtBytes(regionTickUnit, 0) }} · 末刻度高度表示不足一格的余量</p>
         </Panel>
       </div>
 
+      <div class="section-heading"><h2>需要关注</h2><p>高负载小区与近期告警</p></div>
       <div class="grid grid--bottom">
         <Panel title="重点小区负载 TOP 5" sub="按忙时利用率排序，点击查看趋势" flush>
           <template #actions>
@@ -372,7 +293,7 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
 
     <div v-else class="skeleton-page">
       <div class="kpi-grid">
-        <div v-for="i in 5" :key="i" class="skeleton kpi-skel" />
+        <div v-for="i in 3" :key="i" class="skeleton kpi-skel" />
       </div>
       <div class="grid grid--main">
         <div class="skeleton panel-skel" />
@@ -390,95 +311,18 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
 .page {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 24px;
 }
 
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.insights-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  margin: 2px 2px -5px;
-}
-
-.insights-head h2 {
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-.insights-head span {
-  font-size: 10.5px;
-  color: var(--text-3);
-}
-
-.insights {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.insight {
-  position: relative;
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 11px 14px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  overflow: hidden;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
-}
-
-.insight:hover {
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px) scale(1.008);
-}
-
-.insight-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
-  display: grid;
-  place-items: center;
-  background: var(--primary-soft);
-  color: var(--primary);
-  flex-shrink: 0;
-}
-
-.insight strong {
-  font-size: 12.5px;
-  font-weight: 600;
-  display: block;
-  letter-spacing: -0.01em;
-}
-
-.insight p {
-  font-size: 11px;
-  color: var(--text-3);
-  margin-top: 2px;
-}
-
-.insight-index {
-  position: absolute;
-  right: 10px;
-  top: 6px;
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--border-strong);
+  grid-template-columns: 1.15fr 1fr 1fr;
+  gap: 24px;
 }
 
 .grid {
   display: grid;
-  gap: 12px;
+  gap: 24px;
 }
 
 .grid--main {
@@ -496,56 +340,6 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
   font-size: 11px;
   color: var(--text-3);
   margin-right: 4px;
-}
-
-.donut-wrap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.donut-wrap > :first-child {
-  width: 54%;
-}
-
-.donut-legend {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-
-.donut-legend li {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11.5px;
-  color: var(--text-2);
-}
-
-.donut-legend .dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 2px;
-}
-
-.donut-legend .name {
-  width: 34px;
-  flex-shrink: 0;
-}
-
-.donut-legend .val {
-  color: var(--text);
-  font-weight: 600;
-  width: 38px;
-  text-align: right;
-}
-
-.donut-legend .bytes {
-  color: var(--text-3);
-  font-size: 10.5px;
-  margin-left: auto;
 }
 
 .row-click {
@@ -701,7 +495,7 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
 .skeleton-page {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 24px;
 }
 
 .kpi-skel {
@@ -712,7 +506,7 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
   height: 340px;
 }
 
-@media (max-width: 1280px) {
+@media (max-width: 1120px) {
   .kpi-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -722,8 +516,15 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .insights {
-    grid-template-columns: 1fr;
-  }
 }
+
+.kpi-grid > :first-child { background: var(--primary-soft); border-color: var(--primary-border); }
+.overview-note { margin-left: auto; display: inline-flex; align-items: center; gap: 7px; color: var(--text-3); }
+.region-lead { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+.region-lead strong { font-size: 32px; font-weight: 650; letter-spacing: -.04em; }
+.region-lead small { font-size: 16px; margin-left: 3px; }
+.region-lead > span { font-size: 12px; color: var(--text-3); }
+.alert-item { padding: 14px 4px; }
+@media (max-width: 680px) { .kpi-grid { grid-template-columns: 1fr; gap: 14px; } .overview-note { margin-left: 0; } }
+
 </style>

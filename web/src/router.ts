@@ -1,7 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import Overview from '@/views/Overview.vue'
 import Hourly from '@/views/Hourly.vue'
-import Region from '@/views/Region.vue'
 import Cells from '@/views/Cells.vue'
 import Realtime from '@/views/Realtime.vue'
 import Pipeline from '@/views/Pipeline.vue'
@@ -27,15 +26,15 @@ const router = createRouter({
       component: Hourly,
       meta: {
         title: '时段分析',
-        subtitle: '识别流量高峰时段，量化忙时网络压力',
+        subtitle: '先观察整周规律，选择日期查看当天的流量详情',
         group: '分析',
-        compareable: true
+        hideRange: true
       }
     },
     {
       path: '/region',
       name: 'region',
-      component: Region,
+      component: () => import('@/views/Region.vue'),
       meta: {
         title: '区域分布',
         subtitle: '省市级流量分布与增长差异，定位资源热点',

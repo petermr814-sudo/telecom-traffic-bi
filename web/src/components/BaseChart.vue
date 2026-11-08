@@ -66,9 +66,10 @@ function waitAndInit(tries = 0) {
 }
 
 onMounted(() => {
-  // 等页面切换的 0.2s 过渡结束再初始化：过渡期间的 transform 会让 ECharts
-  // 的 tooltip 容器定位异常，表现为 hover 没有数字、resize 报错。
-  window.setTimeout(() => waitAndInit(), 320)
+  // 等页面切换过渡（leave 0.16s + enter 0.24s）结束再初始化：过渡期间的
+  // transform 会让 ECharts 的 tooltip 容器定位异常，表现为 hover 没有数字、
+  // resize 报错。
+  window.setTimeout(() => waitAndInit(), 480)
 })
 
 watch(() => props.option, render)
@@ -80,7 +81,7 @@ onUnmounted(() => {
   chart.value?.dispose()
 })
 
-defineExpose({ chart })
+defineExpose({ chart, getChart: () => chart.value })
 </script>
 
 <template>

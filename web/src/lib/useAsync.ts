@@ -5,20 +5,24 @@ export function useAsync<T>(fn: () => Promise<T>, deps: () => unknown[] = () => 
   const data = ref<T | null>(null) as Ref<T | null>
   const error = ref('')
   const loading = ref(false)
+  let requestId = 0
 
   async function run() {
+    const id = ++requestId
     loading.value = true
     ui.loadingCount++
     error.value = ''
     try {
-      data.value = await fn()
+      const result = await fn()
+      if (id !== requestId) return
+      data.value = result
       if (ui.lastUpdated === '—') {
         ui.lastUpdated = new Date().toLocaleTimeString('zh-CN', { hour12: false })
       }
     } catch (e) {
-      error.value = (e as Error).message || '加载失败'
+      if (id === requestId) error.value = (e as Error).message || '加载失败'
     } finally {
-      loading.value = false
+      if (id === requestId) loading.value = false
       ui.loadingCount = Math.max(0, ui.loadingCount - 1)
     }
   }

@@ -10,6 +10,11 @@ body,
   height: 100%;
 }
 
+html {
+  /* 始终保留纵向滚动条位置，避免展开/收起日期详情时内容宽度跳动 */
+  overflow-y: scroll;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -126,13 +131,11 @@ svg {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+  transition: border-color 0.18s ease;
 }
 
 .panel:hover {
   border-color: var(--border-strong);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
 }
 
 .panel-head {
@@ -140,11 +143,11 @@ svg {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  padding: 16px 18px 0;
+  padding: 24px 26px 0;
 }
 
 .panel-title {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   letter-spacing: -0.01em;
   display: flex;
@@ -155,7 +158,7 @@ svg {
 .panel-sub {
   color: var(--text-3);
   font-size: 12px;
-  margin-top: 3px;
+  margin-top: 6px;
 }
 
 .panel-actions {
@@ -163,10 +166,11 @@ svg {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .panel-body {
-  padding: 14px 18px 16px;
+  padding: 22px 26px 24px;
   flex: 1;
   min-height: 0;
 }
@@ -401,7 +405,7 @@ svg {
 
 .table--compact td,
 .table--compact th {
-  padding: 8px 10px;
+  padding: 13px 16px;
 }
 
 /* ---------- input ---------- */
@@ -510,18 +514,28 @@ svg {
   transform: translateY(4px);
 }
 
-.page-enter-active,
+/* 二次贝塞尔缓动：enter 用 easeOutQuad（cubic-bezier(0.333, 0.667, 0.667, 1)），
+   leave 用 easeInQuad（cubic-bezier(0.333, 0, 0.667, 0.333)），均为二次曲线的精确三次表示 */
+.page-enter-active {
+  transition:
+    opacity 0.24s cubic-bezier(0.333, 0.667, 0.667, 1),
+    transform 0.24s cubic-bezier(0.333, 0.667, 0.667, 1);
+}
+
 .page-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition:
+    opacity 0.16s cubic-bezier(0.333, 0, 0.667, 0.333),
+    transform 0.16s cubic-bezier(0.333, 0, 0.667, 0.333);
 }
 
 .page-enter-from {
   opacity: 0;
-  transform: translateY(6px);
+  transform: translateX(32px);
 }
 
 .page-leave-to {
   opacity: 0;
+  transform: translateX(-24px);
 }
 
 @keyframes spin {

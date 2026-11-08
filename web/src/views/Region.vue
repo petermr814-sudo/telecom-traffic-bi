@@ -1,24 +1,21 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import * as echarts from 'echarts'
 import { useRouter } from 'vue-router'
 import Panel from '@/components/Panel.vue'
-import BaseChart from '@/components/BaseChart.vue'
+import TrafficExplorer from '@/components/TrafficExplorer.vue'
 import Icon from '@/components/Icon.vue'
+import Select from '@/components/Select.vue'
 import { useAsync } from '@/lib/useAsync'
 import { api } from '@/api/client'
 import type { ProvinceRow } from '@/api/types'
 import { fmtBytes, fmtCount, fmtDelta, fmtInt } from '@/lib/format'
-import { axisLabel, C, chartPalette, tooltipBase } from '@/lib/chart'
 import { downloadFile, toCsv, toast, ui } from '@/stores/ui'
 
 const router = useRouter()
-const mapReady = ref(false)
-const mapError = ref('')
-const metric = ref<'traffic' | 'users' | 'perUser' | 'growth'>('traffic')
 const selected = ref<string | null>(null)
 const q = ref('')
 const regionFilter = ref<string>('全部')
+const regionOptions = ['全部', '华北', '东北', '华东', '华中', '华南', '西南', '西北'].map((r) => ({ value: r, label: r }))
 const sortKey = ref<'traffic' | 'users' | 'perUser' | 'growth'>('traffic')
 const sortDir = ref(-1)
 
@@ -28,27 +25,6 @@ const { data, error, loading, run } = useAsync(
 )
 
 const rows = computed<ProvinceRow[]>(() => data.value ?? [])
-
-const metricLabel: Record<string, string> = {
-  traffic: '流量',
-  users: '用户数',
-  perUser: '人均流量',
-  growth: '同比增速'
-}
-
-function metricValue(r: ProvinceRow) {
-  if (metric.value === 'traffic') return r.trafficBytes
-  if (metric.value === 'users') return r.users
-  if (metric.value === 'perUser') return r.perUserBytes
-  return r.growth
-}
-
-function metricText(r: ProvinceRow) {
-  if (metric.value === 'traffic') return fmtBytes(r.trafficBytes, 0)
-  if (metric.value === 'users') return fmtCount(r.users)
-  if (metric.value === 'perUser') return fmtBytes(r.perUserBytes, 0)
-  return `${r.growth > 0 ? '+' : ''}${r.growth.toFixed(1)}%`
-}
 
 const selectedRow = computed(() => rows.value.find((r) => r.province === selected.value) ?? null)
 const selectedRank = computed(() => {
@@ -61,29 +37,14 @@ const topByTraffic = computed(() => [...rows.value].sort((a, b) => b.trafficByte
 const topByGrowth = computed(() => [...rows.value].filter((r) => r.trafficBytes > 1e14).sort((a, b) => b.growth - a.growth)[0])
 const topByPerUser = computed(() => [...rows.value].sort((a, b) => b.perUserBytes - a.perUserBytes)[0])
 
-const regionAgg = computed(() => {
-  const map = new Map<string, { bytes: number; users: number; provinces: number }>()
-  for (const r of rows.value) {
-    const cur = map.get(r.region) ?? { bytes: 0, users: 0, provinces: 0 }
-    cur.bytes += r.trafficBytes
-    cur.users += r.users
-    cur.provinces += 1
-    map.set(r.region, cur)
-  }
-  const total = [...map.values()].reduce((s, v) => s + v.bytes, 0)
-  return [...map.entries()]
-    .map(([region, v]) => ({ region, ...v, share: (v.bytes / total) * 100 }))
-    .sort((a, b) => b.bytes - a.bytes)
-})
-
 const filtered = computed(() => {
   const k = q.value.trim()
   let list = rows.value
   if (regionFilter.value !== '全部') list = list.filter((r) => r.region === regionFilter.value)
   if (k) list = list.filter((r) => r.province.includes(k) || r.region.includes(k))
   return [...list].sort((a, b) => {
-    const av = sortKey.value === 'traffic' ? a.trafficBytes : a[sortKey.value]
-    const bv = sortKey.value === 'traffic' ? b.trafficBytes : b[sortKey.value]
+    const av = sortKey.value === 'traffic' ? a.trafficBytes : sortKey.value === 'perUser' ? a.perUserBytes : a[sortKey.value]
+    const bv = sortKey.value === 'traffic' ? b.trafficBytes : sortKey.value === 'perUser' ? b.perUserBytes : b[sortKey.value]
     return (av - bv) * sortDir.value
   })
 })
@@ -96,108 +57,8 @@ function setSort(k: typeof sortKey.value) {
   }
 }
 
-const mapOption = computed(() => {
-  if (!mapReady.value) return {}
-  const values = rows.value.map((r) => ({ name: r.province, value: metricValue(r), selected: selected.value === r.province }))
-  const nums = values.map((v) => v.value)
-  return {
-    animationDuration: 500,
-    tooltip: {
-      ...tooltipBase,
-      formatter: (p: any) => {
-        const r = rows.value.find((x) => x.province === p.name)
-        if (!r) return `${p.name}<br/><span style="opacity:.6">暂无数据</span>`
-        return `<div style="font-weight:600;margin-bottom:4px">${r.province} · ${r.region}</div>
-          <div>流量 <b>${fmtBytes(r.trafficBytes, 0)}</b>（占 ${r.share.toFixed(1)}%）</div>
-          <div>用户 ${fmtCount(r.users)} · 人均 ${fmtBytes(r.perUserBytes, 0)}</div>
-          <div>同比 <b style="color:${r.growth >= 0 ? '#6ee7b7' : '#fca5a5'}">${r.growth > 0 ? '+' : ''}${r.growth.toFixed(1)}%</b></div>`
-      }
-    },
-    visualMap: {
-      show: false,
-      seriesIndex: 0,
-      min: Math.min(...nums),
-      max: Math.max(...nums),
-      inRange: { color: ['#eef3ff', '#c6d7ff', '#8badff', '#4b7dff', '#1f5eff'] }
-    },
-    series: [
-      {
-        type: 'map',
-        map: 'china',
-        roam: true,
-        zoom: 1.38,
-        scaleLimit: { min: 0.9, max: 4 },
-        selectedMode: 'single',
-        label: { show: false },
-        itemStyle: { areaColor: '#edf2fb', borderColor: '#ffffff', borderWidth: 1 },
-        emphasis: {
-          label: { show: true, color: '#0c1526', fontSize: 10, fontWeight: 500 },
-          itemStyle: { areaColor: '#c9d9ff' }
-        },
-        select: {
-          label: { show: true, color: '#fff', fontSize: 10, fontWeight: 500 },
-          itemStyle: { areaColor: '#1f5eff' }
-        },
-        data: values
-      }
-    ]
-  } as any
-})
-
-const legendExtent = computed(() => {
-  const nums = rows.value.map((r) => metricValue(r))
-  if (!nums.length) return { min: '0', max: '0' }
-  const min = Math.min(...nums)
-  const max = Math.max(...nums)
-  const f = (v: number) => {
-    if (metric.value === 'traffic' || metric.value === 'perUser') return fmtBytes(v, 0)
-    if (metric.value === 'users') return fmtCount(v)
-    return `${v.toFixed(1)}%`
-  }
-  return { min: f(min), max: f(max) }
-})
-
-const regionBarOption = computed(() => {
-  const list = [...regionAgg.value].reverse()
-  return {
-    animationDuration: 400,
-    grid: { left: 8, right: 44, top: 4, bottom: 0, containLabel: true },
-    tooltip: { ...tooltipBase, formatter: (p: any) => `${p.name}<br/>${fmtBytes(p.value, 0)} · ${regionAgg.value.find((r) => r.region === p.name)?.share.toFixed(1)}%` },
-    xAxis: { type: 'value', show: false },
-    yAxis: {
-      type: 'category',
-      data: list.map((r) => r.region),
-      axisLine: { show: false },
-      axisTick: { show: false },
-      axisLabel: { ...axisLabel, fontSize: 11 }
-    },
-    series: [
-      {
-        type: 'bar',
-        data: list.map((r) => r.bytes),
-        barWidth: 9,
-        itemStyle: {
-          borderRadius: [0, 5, 5, 0],
-          color: (p: any) => chartPalette[p.dataIndex % chartPalette.length]
-        },
-        label: {
-          show: true,
-          position: 'right',
-          formatter: (p: any) => `${regionAgg.value.find((r) => r.region === list[p.dataIndex].region)?.share.toFixed(1)}%`,
-          color: C.text2,
-          fontSize: 10
-        }
-      }
-    ]
-  } as any
-})
-
 function selectProvince(name: string) {
   selected.value = selected.value === name ? null : name
-}
-
-function onMapClick(p: any) {
-  if (p?.name) selectProvince(p.name)
 }
 
 function viewCells() {
@@ -214,28 +75,7 @@ function exportCsv() {
   toast('success', '已导出 CSV', `${body.length} 个省级行政区`)
 }
 
-onMounted(async () => {
-  try {
-    const res = await fetch(`${import.meta.env.BASE_URL}geo/china.json`)
-    const geo = await res.json()
-    geo.features = (geo.features || []).filter((f: any) => f?.properties?.name)
-    for (const f of geo.features) {
-      const g = f.geometry
-      if (!g) continue
-      if (g.type === 'Polygon') {
-        g.coordinates = g.coordinates.filter((ring: any[]) => Math.max(...ring.map((p: number[]) => p[1])) >= 15)
-      } else if (g.type === 'MultiPolygon') {
-        g.coordinates = g.coordinates.filter((poly: any[]) => Math.max(...poly[0].map((p: number[]) => p[1])) >= 15)
-      }
-    }
-    geo.features = geo.features.filter((f: any) => f.geometry?.coordinates?.length)
-    echarts.registerMap('china', geo)
-    mapReady.value = true
-  } catch (e) {
-    mapError.value = `地图数据加载失败：${(e as Error).message}`
-  }
-  window.addEventListener('telco:export', exportCsv)
-})
+onMounted(() => window.addEventListener('telco:export', exportCsv))
 
 onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
 </script>
@@ -271,35 +111,7 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
       </div>
     </section>
 
-    <div class="grid grid--map">
-      <Panel title="全国流量地图" :sub="`${metricLabel[metric]} · ${ui.range === 'today' ? '今日' : ui.range === '7d' ? '近 7 天' : '近 30 天'} · 滚轮缩放 / 点击省份下钻`">
-        <template #actions>
-          <div class="seg seg--sm">
-            <button class="seg__item" :class="{ 'is-active': metric === 'traffic' }" @click="metric = 'traffic'">流量</button>
-            <button class="seg__item" :class="{ 'is-active': metric === 'users' }" @click="metric = 'users'">用户</button>
-            <button class="seg__item" :class="{ 'is-active': metric === 'perUser' }" @click="metric = 'perUser'">人均</button>
-            <button class="seg__item" :class="{ 'is-active': metric === 'growth' }" @click="metric = 'growth'">增速</button>
-          </div>
-        </template>
-        <div v-if="mapError" class="map-error">{{ mapError }}</div>
-        <BaseChart v-else :option="mapOption" height="480px" :replace-merge="['series', 'visualMap']" @chart-click="onMapClick" />
-        <div class="map-foot">
-          <span class="crumb-line">
-            <button class="crumb-btn" @click="selected = null">全国</button>
-            <template v-if="selectedRow">
-              <Icon name="chevron-right" :size="12" />
-              <span>{{ selectedRow.region }}</span>
-              <Icon name="chevron-right" :size="12" />
-              <b>{{ selectedRow.province }}</b>
-            </template>
-          </span>
-          <span class="map-legend">
-            <span class="legend-edge">{{ legendExtent.min }}</span>
-            <i class="legend-bar" />
-            <span class="legend-edge">{{ legendExtent.max }}</span>
-          </span>
-        </div>
-      </Panel>
+    <TrafficExplorer :provinces="rows" />
 
       <Panel v-if="selectedRow" :title="selectedRow.province" :sub="`${selectedRow.region} · 流量排名第 ${selectedRank}`">
         <template #actions>
@@ -339,15 +151,8 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
         </button>
       </Panel>
 
-      <Panel v-else title="大区流量结构" sub="点击地图省份可比对同区域">
-        <BaseChart :option="regionBarOption" height="300px" />
-        <p class="region-note">
-          华东 7 省贡献 {{ regionAgg[0]?.share.toFixed(1) }}% 的流量，是资源投入的重点区域；东北仅
-          {{ regionAgg[regionAgg.length - 1]?.share.toFixed(1) }}%，网络利用率相对宽裕。地图颜色对应「{{ metricLabel[metric] }}」维度，可切换流量、用户、人均与增速。
-        </p>
-      </Panel>
-    </div>
 
+    <div class="section-heading"><h2>省份明细</h2><p>搜索、排序并比较各省表现</p></div>
     <Panel title="省级明细" :sub="`${filtered.length} 条 · 点击表头排序`" flush>
       <template #actions>
         <div class="filters">
@@ -355,10 +160,7 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
             <Icon name="search" :size="14" />
             <input v-model="q" class="input" placeholder="搜索省份或大区" aria-label="搜索省份" />
           </div>
-          <select v-model="regionFilter" class="input select" aria-label="按大区筛选">
-            <option>全部</option>
-            <option v-for="r in ['华北', '东北', '华东', '华中', '华南', '西南', '西北']" :key="r">{{ r }}</option>
-          </select>
+          <Select v-model="regionFilter" class="select" size="sm" :options="regionOptions" aria-label="按大区筛选" />
         </div>
       </template>
       <div class="table-wrap table-scroll">
@@ -402,12 +204,12 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
 </template>
 
 <style scoped>
-.page { display: flex; flex-direction: column; gap: 12px; }
+.page { display: flex; flex-direction: column; gap: 24px; }
 
 .stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 24px;
 }
 
 .stat {
@@ -425,7 +227,7 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
 .stat strong { font-size: 17px; font-weight: 600; letter-spacing: -0.02em; }
 .stat-sub { font-size: 10.5px; color: var(--text-3); }
 
-.grid { display: grid; gap: 12px; }
+.grid { display: grid; gap: 24px; }
 .grid--map { grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); }
 
 .seg--sm .seg__item { height: 24px; padding: 0 8px; font-size: 11px; }
@@ -547,7 +349,7 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
 .search { position: relative; }
 .search svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--text-3); }
 .search .input { width: 180px; height: 30px; padding-left: 28px; font-size: 12px; }
-.select { height: 30px; width: 92px; font-size: 12px; }
+.select { width: 92px; }
 
 .table-scroll { max-height: 392px; overflow: auto; }
 th.sortable { cursor: pointer; user-select: none; }
@@ -563,12 +365,30 @@ th.sortable:hover { color: var(--text); }
 .error-card p { color: var(--text-3); font-size: 12px; margin-top: 2px; }
 .error-card .btn { margin-left: auto; }
 
-.skeleton-page { display: flex; flex-direction: column; gap: 12px; }
+.skeleton-page { display: flex; flex-direction: column; gap: 24px; }
 .stats-skel { height: 80px; }
 .map-skel { height: 500px; }
 
-@media (max-width: 1280px) {
+@media (max-width: 1120px) {
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grid--map { grid-template-columns: minmax(0, 1fr); }
 }
+
+.stats { gap: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.stat { border: 0; border-radius: 0; box-shadow: none; background: transparent; padding: 24px; min-height: 122px; }
+.stat + .stat { border-left: 1px solid var(--border); }
+.stat:hover { transform: none; box-shadow: none; }
+.stat-sub { font-size: 11px; }
+@media (max-width: 1180px) {
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat { padding: 20px 16px; }
+  .stat:nth-child(3) { border-left: 0; border-top: 1px solid var(--border); }
+  .stat:nth-child(4) { border-top: 1px solid var(--border); }
+}
+
+.stat strong { font-size: 26px; margin: 10px 0 7px; }
+.stat-label { font-size: 12px; }
+.region-note { font-size: 12px; line-height: 1.8; background: transparent; border-top: 1px solid var(--border); padding: 20px 0 0; }
+.filters { flex-wrap: wrap; }
+
 </style>

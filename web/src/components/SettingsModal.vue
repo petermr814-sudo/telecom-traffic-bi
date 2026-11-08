@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import Modal from './Modal.vue'
 import Icon from './Icon.vue'
+import NumberInput from './NumberInput.vue'
 import { saveSettings, ui } from '@/stores/ui'
 import { dataMode } from '@/api/client'
 
@@ -74,20 +75,14 @@ function reset() {
         <span class="hint">影响资源页状态与总览忙时占比</span>
       </div>
       <div class="field-row">
-        <label class="field">
+        <div class="field">
           <span>预警阈值</span>
-          <div class="input-wrap">
-            <input v-model.number="warn" class="input num" type="number" min="40" max="95" step="1" />
-            <span class="suffix">%</span>
-          </div>
-        </label>
-        <label class="field">
+          <NumberInput v-model="warn" :min="40" :max="95" :step="1" suffix="%" aria-label="预警阈值" />
+        </div>
+        <div class="field">
           <span>拥塞阈值</span>
-          <div class="input-wrap">
-            <input v-model.number="congest" class="input num" type="number" min="41" max="99" step="1" />
-            <span class="suffix">%</span>
-          </div>
-        </label>
+          <NumberInput v-model="congest" :min="41" :max="99" :step="1" suffix="%" aria-label="拥塞阈值" />
+        </div>
       </div>
       <p v-if="invalid" class="error">
         <Icon name="alert" :size="13" />
@@ -194,24 +189,6 @@ h4 {
   flex-direction: column;
   gap: 5px;
   font-size: 11.5px;
-  color: var(--text-3);
-}
-
-.input-wrap {
-  position: relative;
-}
-
-.input-wrap .input {
-  width: 100%;
-  padding-right: 28px;
-}
-
-.suffix {
-  position: absolute;
-  right: 11px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 11px;
   color: var(--text-3);
 }
 

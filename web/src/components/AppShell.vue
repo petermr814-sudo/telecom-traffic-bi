@@ -8,7 +8,7 @@ import {
 } from '@/stores/ui'
 
 const route = useRoute()
-const meta = computed(() => route.meta as { title: string; subtitle: string; group: string; hideFilters?: boolean; modeLabel?: string; compareable?: boolean })
+const meta = computed(() => route.meta as { title: string; subtitle: string; group: string; hideFilters?: boolean; hideRange?: boolean; modeLabel?: string; compareable?: boolean })
 const regionLabel = computed(() => (ui.region === 'all' ? '全国' : ui.region))
 
 const regionOpen = ref(false)
@@ -179,13 +179,11 @@ onUnmounted(() => {
             <Icon name="chevron-right" :size="12" />
             <span class="crumb-cur">{{ meta.title }}</span>
           </div>
-          <h1>{{ meta.title }}</h1>
-          <p>{{ meta.subtitle }}</p>
         </div>
 
         <div class="actions">
           <template v-if="!meta.hideFilters">
-            <div class="seg" role="group" aria-label="时间范围">
+            <div v-if="!meta.hideRange" class="seg" role="group" aria-label="时间范围">
               <button
                 v-for="r in RANGE_OPTIONS"
                 :key="r.key"
@@ -233,7 +231,6 @@ onUnmounted(() => {
               对比上期
             </button>
 
-            <span class="sync-time num">{{ ui.lastUpdated === '—' ? '尚未同步' : `更新 ${ui.lastUpdated}` }}</span>
           </template>
           <span v-else class="mode-chip">
             <span class="dot dot--pulse" />
@@ -245,7 +242,7 @@ onUnmounted(() => {
           </button>
 
           <div class="dd">
-            <button class="btn" aria-expanded="exportOpen" @click="closeMenus(); exportOpen = !exportOpen">
+            <button class="btn" :aria-expanded="exportOpen" @click="closeMenus(); exportOpen = !exportOpen">
               <Icon name="download" :size="15" />
               导出
               <Icon name="chevron-down" :size="13" />
@@ -269,10 +266,6 @@ onUnmounted(() => {
             </transition>
           </div>
 
-          <button class="btn btn--icon" :aria-label="isFull ? '退出全屏' : '全屏演示'" @click="toggleFull">
-            <Icon :name="isFull ? 'compress' : 'expand'" :size="16" />
-          </button>
-
           <button class="btn btn--icon bell" aria-label="告警中心" @click="ui.alertsOpen = true">
             <Icon name="bell" :size="16" />
             <span v-if="pendingAlerts" class="bell-badge num">{{ pendingAlerts }}</span>
@@ -285,6 +278,10 @@ onUnmounted(() => {
             <div v-if="moreOpen" class="dd-backdrop" @click="moreOpen = false" />
             <transition name="fade">
               <div v-if="moreOpen" class="dd-menu dd-menu--right" role="menu">
+                <button class="dd-item" @click="closeMenus(); toggleFull()">
+                  <Icon :name="isFull ? 'compress' : 'expand'" :size="15" />
+                  <span>{{ isFull ? '退出全屏' : '全屏演示' }}</span>
+                </button>
                 <button class="dd-item" @click="moreOpen = false; ui.settingsOpen = true">
                   <Icon name="settings" :size="15" />
                   <span>偏好设置</span>
@@ -307,6 +304,10 @@ onUnmounted(() => {
 
       <main class="content">
         <div class="content-inner">
+          <div class="page-heading">
+            <div><h1>{{ meta.title }}</h1><p>{{ meta.subtitle }}</p></div>
+            <span class="page-status"><span class="dot" />{{ ui.lastUpdated === '—' ? '演示数据' : `更新于 ${ui.lastUpdated}` }}</span>
+          </div>
           <slot />
         </div>
       </main>
@@ -659,9 +660,9 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--text-3);
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
 }
 
 .crumb-cur {
@@ -669,18 +670,18 @@ onUnmounted(() => {
 }
 
 h1 {
-  font-size: 18px;
+  font-size: 28px;
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.25;
-  margin-top: 1px;
+  margin-top: 0;
 }
 
-.title-block p {
-  font-size: 11.5px;
+.page-heading p {
+  font-size: 13px;
   color: var(--text-3);
   margin-top: 1px;
-  white-space: nowrap;
+  line-height: 1.6;
 }
 
 .actions {
@@ -754,11 +755,11 @@ h1 {
 
 .content {
   flex: 1;
-  padding: 20px 24px 40px;
+  padding: 32px 40px 56px;
 }
 
 .content-inner {
-  max-width: 1680px;
+  max-width: 1480px;
   margin: 0 auto;
 }
 
@@ -862,17 +863,7 @@ h1 {
   justify-content: center;
 }
 
-@media (max-width: 1440px) {
-  .sync-time {
-    display: none;
-  }
-}
-
 @media (max-width: 1280px) {
-  .title-block p {
-    display: none;
-  }
-
   .actions {
     gap: 6px;
   }
@@ -909,4 +900,35 @@ h1 {
     padding: 16px;
   }
 }
+
+.page-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
+.page-heading p { margin-top: 8px; }
+.page-status { display: flex; align-items: center; gap: 7px; color: var(--text-3); font-size: 12px; white-space: nowrap; }
+.page-status .dot { color: var(--green); }
+.conn-card { background: transparent; border-color: transparent; padding: 10px 8px; }
+.brand-mark { box-shadow: none; }
+.topbar { background: var(--surface); backdrop-filter: none; }
+@media (max-width: 1180px) { .content { padding: 28px; } }
+@media (max-width: 900px) {
+  .topbar { height: auto; min-height: var(--topbar-h); padding: 16px 22px; flex-wrap: wrap; }
+  .actions { flex: 1; justify-content: flex-end; flex-wrap: wrap; }
+  .title-block { display: none; }
+  .content { padding: 24px; }
+}
+@media (max-width: 680px) {
+  .shell { --sidebar-w: 60px; }
+  .brand { padding: 0; }
+  .collapse-btn, .sidebar-foot .user, .collapse-row { display: none; }
+  .nav { padding: 16px 6px; }
+  .nav-item { padding: 0; }
+  .topbar { padding: 12px; }
+  .actions { justify-content: flex-start; gap: 6px; }
+  .seg__item { padding: 0 7px; font-size: 11px; }
+  .region-btn { min-width: 70px; }
+  .content { padding: 24px 16px 40px; }
+  .page-heading { margin-bottom: 24px; align-items: flex-start; }
+  .page-heading h1 { font-size: 24px; }
+  .page-status { display: none; }
+}
+
 </style>
