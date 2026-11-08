@@ -31,6 +31,7 @@ export CHROME_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome
 | `node tools/layout-verify.mjs` | 检查六页在 1280 / 768 / 390 宽度下的溢出、图表初始化，以及技术说明键盘展开/收起；截图到 `docs/layout-check/` |
 | `node tools/template-verify.mjs` | 检查日期与当天数据一致、构成合计、热力读数、连续分箱、全量小区、鼠标详情和消息份额；详情截图到 `docs/layout-check/` |
 | `node tools/map-verify.mjs` | 3D 地图聚焦、连续切城、范围联动、数据核对、搜索、返回、移动布局及离线交互；截图到 `docs/map-check/`，默认端口 5400，可用 SHOT_BASE 覆盖 |
+| `node tools/page-transition-verify.mjs` | 页面切换动画：离开/进入的移动轨迹、二次贝塞尔缓动、透明度同步、残留清理与减少动态效果；截图到 `docs/layout-check/page-switch/` |
 | `node tools/prepare-city-geo.mjs` | 从 DataV 更新演示数据覆盖的 60 座城市边界，仅资源更新时需要联网 |
 
 以上脚本默认访问 `http://127.0.0.1:5178/`，可用 `SHOT_BASE` 覆盖：
