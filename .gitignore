@@ -17,6 +17,7 @@ coverage/
 .cache/
 docs/layout-check/
 docs/map-check/
+docs/hourly-check/
 .playwright-cli/
 
 # 系统文件

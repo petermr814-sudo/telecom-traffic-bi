@@ -87,13 +87,17 @@ function terrainHeight(point: Coordinate) {
   if (activeDem !== nationalDem && nationalDem && !activeDem.contains(point[0], point[1])) return nationalDem.height(point[0], point[1])
   return activeDem.height(point[0], point[1])
 }
-const GHOST_OPACITY = 0.42
+const GHOST_OPACITY = 0.5
+const GHOST_TINT = new THREE.Color('#c9cec6')
+const FULL_TINT = new THREE.Color('#f7f6f2')
 let ghostMix = 0
 let ghostTarget = 0
 function applyGhostMix() {
   if (!nationalSurface) return
   const material = nationalSurface.material as THREE.MeshStandardMaterial
   material.opacity = 1 - ghostMix * (1 - GHOST_OPACITY)
+  // A touch of sage gray keeps flat plains from melting into the page background.
+  material.color.copy(FULL_TINT).lerp(GHOST_TINT, ghostMix)
 }
 function setGhost(ghost: boolean) {
   const target = ghost ? 1 : 0
