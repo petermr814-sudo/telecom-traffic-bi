@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import dayjs from 'dayjs'
 import TrafficMap3D from './TrafficMap3D.vue'
 import BaseChart from './BaseChart.vue'
@@ -20,6 +20,53 @@ const selected = ref<string | null>(null)
 const query = ref('')
 const moving = ref(false)
 const metrics: { key: MapMetric; label: string }[] = [{ key: 'traffic', label: '流量' }, { key: 'users', label: '用户' }, { key: 'perUser', label: '人均' }, { key: 'growth', label: '增速' }]
+const metricsGroup = ref<HTMLElement | null>(null)
+
+// 指标切换的滑动胶囊遮罩：二次缓动补间，与时段页日期遮罩同一套缓动；
+// 不跟随系统的「减少动画」偏好，保证切换时能明确看到滑动
+const metricsMask = reactive({ left: 0, width: 0 })
+let metricsRaf = 0
+let metricsInited = false
+const quadEaseInOut = (p: number) => (p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2)
+
+function metricsMaskTarget() {
+  // 用静态 data-key 定位按钮：不能读 button.active，watcher 在类名更新前
+  // 就会触发（flush 'pre'），那样目标还是旧按钮，胶囊会停在原地
+  const el = metricsGroup.value?.querySelector<HTMLElement>(`[data-key="${metric.value}"]`)
+  if (!metricsGroup.value || !el) return null
+  return { left: el.offsetLeft, width: el.offsetWidth }
+}
+
+function moveMetricsMask() {
+  const target = metricsMaskTarget()
+  if (!target) return
+  cancelAnimationFrame(metricsRaf)
+  if (!metricsInited) {
+    metricsMask.left = target.left
+    metricsMask.width = target.width
+    metricsInited = true
+    return
+  }
+  const from = { left: metricsMask.left, width: metricsMask.width }
+  const start = performance.now()
+  const step = (now: number) => {
+    const p = Math.min(1, (now - start) / 300)
+    const eased = quadEaseInOut(p)
+    metricsMask.left = from.left + (target.left - from.left) * eased
+    metricsMask.width = from.width + (target.width - from.width) * eased
+    if (p < 1) metricsRaf = requestAnimationFrame(step)
+  }
+  metricsRaf = requestAnimationFrame(step)
+}
+watch(metric, moveMetricsMask)
+onMounted(() => {
+  moveMetricsMask()
+  window.addEventListener('resize', moveMetricsMask)
+})
+onUnmounted(() => {
+  cancelAnimationFrame(metricsRaf)
+  window.removeEventListener('resize', moveMetricsMask)
+})
 const rangeLabel = computed(() => ui.range === 'today' ? '今日' : ui.range === '7d' ? '近 7 天' : '近 30 天')
 const { data, error, loading, run } = useAsync(() => api.cells(ui.range, 'all', ui.settings.warn, ui.settings.congest), () => [ui.range, ui.tick, ui.settings.warn, ui.settings.congest])
 const { data: meta } = useAsync(() => api.meta())
@@ -80,7 +127,7 @@ const regionRows = computed(() => {
     <div class="atlas">
       <header class="atlas-header">
         <div class="atlas-title"><span class="atlas-icon"><Icon name="layers" :size="21" /></span><div><div class="eyebrow">TERRAIN ATLAS <span>/ 01</span></div><h2>全国流量地图</h2></div><span class="atlas-badge">地理白模</span></div>
-        <div class="map-metrics" role="group" aria-label="地图指标"><button v-for="m in metrics" :key="m.key" :class="{ active: metric === m.key }" :aria-pressed="metric === m.key" @click="metric = m.key">{{ m.label }}</button></div>
+        <div ref="metricsGroup" class="map-metrics" role="group" aria-label="地图指标"><span class="metrics-mask" aria-hidden="true" :style="{ left: `${metricsMask.left}px`, width: `${metricsMask.width}px` }" /><button v-for="m in metrics" :key="m.key" :data-key="m.key" :class="{ active: metric === m.key }" :aria-pressed="metric === m.key" @click="metric = m.key">{{ m.label }}</button></div>
       </header>
       <div v-if="error && data" class="refresh-error" role="alert">城市数据刷新失败，当前显示上次结果。<button @click="run">重试</button></div>
       <div class="atlas-body">
@@ -144,9 +191,10 @@ const regionRows = computed(() => {
 .eyebrow span { color: #bbc4bd; margin-left: 6px; }
 .atlas-title h2 { font-size: 17px; letter-spacing: .02em; font-weight: 550; margin-top: 4px; }
 .atlas-badge { margin-left: 8px; font-size: 10px; color: #819087; border: 1px solid #dde4dd; border-radius: 5px; padding: 4px 7px; }
-.map-metrics { display: flex; padding: 4px; background: #f2f4ef; border: 1px solid #dfe5dd; border-radius: 8px; flex-shrink: 0; }
-.map-metrics button { color: #78867b; font-size: 11px; padding: 6px 14px; border-radius: 5px; transition: color 150ms ease, background 150ms ease, transform 150ms ease; }
-.map-metrics button.active { background: #e2e9df; color: #3b5745; box-shadow: 0 1px 4px #0002; }
+.map-metrics { position: relative; display: flex; padding: 4px; background: #f2f4ef; border: 1px solid #dfe5dd; border-radius: 8px; flex-shrink: 0; }
+.metrics-mask { position: absolute; top: 4px; bottom: 4px; left: 0; width: 0; border-radius: 5px; background: #ffffff; border: 1px solid #e2e9df; box-shadow: 0 1px 4px #0002; will-change: left, width; pointer-events: none; z-index: 0; }
+.map-metrics button { position: relative; z-index: 1; color: #78867b; font-size: 11px; padding: 6px 14px; border-radius: 5px; transition: color 150ms ease, transform 150ms ease; }
+.map-metrics button.active { color: #3b5745; }
 .map-metrics button:active { transform: scale(.97); }
 .atlas-body { display: grid; grid-template-columns: minmax(0, 1fr) 304px; }
 .map-column { min-width: 0; }
