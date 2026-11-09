@@ -15,7 +15,7 @@ const selected = ref<Job | null>(null)
 const running = ref<string[]>([])
 const busy = ref(false)
 
-const { data, error, run } = useAsync(
+const { data, error, loading, run } = useAsync(
   () => Promise.all([api.jobs(), api.pipeline()]),
   () => [ui.tick]
 )
@@ -103,33 +103,33 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
     <button class="btn btn--primary" @click="run">重试</button>
   </div>
 
-  <div v-else-if="data" class="page">
+  <div v-else class="page">
     <section class="stats">
       <div class="stat">
         <span class="stat-icon"><Icon name="layers" :size="16" /></span>
-        <div><span>今日作业</span><strong class="num">{{ stats.total }}</strong></div>
+        <div><span>今日作业</span><strong v-liquid="Boolean(data)" class="num">{{ data ? stats.total : '—' }}</strong></div>
         <span class="stat-sub">Spark / MR / Flink</span>
       </div>
       <div class="stat">
         <span class="stat-icon green"><Icon name="check" :size="16" /></span>
-        <div><span>成功</span><strong class="num">{{ stats.success }}</strong></div>
+        <div><span>成功</span><strong v-liquid="Boolean(data)" class="num">{{ data ? stats.success : '—' }}</strong></div>
         <span class="stat-sub">最近一次 {{ jobs[1]?.startTime?.slice(11) }}</span>
       </div>
       <div class="stat">
         <span class="stat-icon blue"><Icon name="refresh" :size="16" /></span>
-        <div><span>运行中</span><strong class="num">{{ stats.running }}</strong></div>
+        <div><span>运行中</span><strong v-liquid="Boolean(data)" class="num">{{ data ? stats.running : '—' }}</strong></div>
         <span class="stat-sub">YARN 队列 normal</span>
       </div>
       <div class="stat">
         <span class="stat-icon red"><Icon name="alert" :size="16" /></span>
-        <div><span>失败</span><strong class="num">{{ stats.failed }}</strong></div>
+        <div><span>失败</span><strong v-liquid="Boolean(data)" class="num">{{ data ? stats.failed : '—' }}</strong></div>
         <span class="stat-sub">可重跑</span>
       </div>
     </section>
 
     <div class="section-heading"><h2>作业运行情况</h2><p>优先关注失败作业与运行中的任务</p></div>
     <div class="grid grid--mid">
-      <Panel class="sources-panel" title="数据源状态" sub="存储与消息组件">
+      <Panel class="sources-panel" title="数据源状态" sub="存储与消息组件" :loading="loading && !data">
         <ul class="sources">
           <li v-for="s in pipeline?.sources" :key="s.name">
             <span class="src-icon"><Icon name="server" :size="15" /></span>
@@ -143,7 +143,7 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
         </ul>
       </Panel>
 
-      <Panel class="jobs-panel" title="作业列表" sub="点击查看输出与日志" flush>
+      <Panel class="jobs-panel" title="作业列表" sub="点击查看输出与日志" :loading="loading && !data" flush>
         <template #actions>
           <button class="btn btn--sm" :disabled="busy" @click="runAll"><Icon name="play" :size="13" />重跑失败</button>
         </template>
@@ -224,11 +224,6 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
     </Disclosure>
   </div>
 
-  <div v-else class="skeleton-page">
-    <div class="skeleton stats-skel" />
-    <div class="skeleton dag-skel" />
-    <div class="skeleton table-skel" />
-  </div>
 
   <Modal :open="Boolean(selected)" :title="selected?.name ?? '作业详情'" :sub="selected ? `${selected.id} · ${selected.engine}` : ''" width="560px" @close="selected = null">
     <template v-if="selected">

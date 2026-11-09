@@ -5,6 +5,7 @@ import Panel from '@/components/Panel.vue'
 import TrafficExplorer from '@/components/TrafficExplorer.vue'
 import Icon from '@/components/Icon.vue'
 import Select from '@/components/Select.vue'
+import LiquidLoader from '@/components/LiquidLoader.vue'
 import { useAsync } from '@/lib/useAsync'
 import { api } from '@/api/client'
 import type { ProvinceRow } from '@/api/types'
@@ -91,22 +92,22 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
     <section class="stats">
       <div class="stat">
         <span class="stat-label">覆盖省级行政区</span>
-        <strong class="num">{{ rows.length }}</strong>
+        <strong v-liquid class="num">{{ rows.length }}</strong>
         <span class="stat-sub">7 个大区 · {{ rows.reduce((s, r) => s + r.cells, 0) }} 个重点小区</span>
       </div>
       <div class="stat">
         <span class="stat-label">流量最高</span>
-        <strong>{{ topByTraffic?.province }}</strong>
+        <strong v-liquid>{{ topByTraffic?.province }}</strong>
         <span class="stat-sub">{{ fmtBytes(topByTraffic?.trafficBytes ?? 0, 0) }} · 占 {{ topByTraffic?.share.toFixed(1) }}%</span>
       </div>
       <div class="stat">
         <span class="stat-label">增长最快</span>
-        <strong>{{ topByGrowth?.province }}</strong>
+        <strong v-liquid>{{ topByGrowth?.province }}</strong>
         <span class="stat-sub"><span class="delta delta--up">{{ fmtDelta(topByGrowth?.growth ?? 0) }}</span> · 较上期</span>
       </div>
       <div class="stat">
         <span class="stat-label">人均流量最高</span>
-        <strong>{{ topByPerUser?.province }}</strong>
+        <strong v-liquid>{{ topByPerUser?.province }}</strong>
         <span class="stat-sub">{{ fmtBytes(topByPerUser?.perUserBytes ?? 0, 0) }} / 人</span>
       </div>
     </section>
@@ -198,8 +199,8 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
   </div>
 
   <div v-else class="skeleton-page">
-    <div class="skeleton stats-skel" />
-    <div class="grid grid--map"><div class="skeleton map-skel" /><div class="skeleton map-skel" /></div>
+    <LiquidLoader class="card stats-skel" compact />
+    <LiquidLoader class="card map-skel" label="正在加载区域数据…" />
   </div>
 </template>
 

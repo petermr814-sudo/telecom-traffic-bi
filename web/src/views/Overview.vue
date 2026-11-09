@@ -15,7 +15,7 @@ import { downloadFile, toCsv, toast, ui } from '@/stores/ui'
 
 const router = useRouter()
 
-const { data, error, run } = useAsync(
+const { data, error, loading, run } = useAsync(
   () => api.overview(ui.range, ui.region, ui.settings.warn, ui.settings.congest),
   () => [ui.range, ui.region, ui.tick, ui.settings.warn, ui.settings.congest]
 )
@@ -169,38 +169,41 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
       <button class="btn btn--primary" @click="run">重试</button>
     </div>
 
-    <template v-else-if="data">
+    <template v-else>
       <section class="kpi-grid" aria-label="核心指标">
         <KpiCard
           label="总流量"
+          :loading="!data"
           :value="total.value"
           :unit="total.unit"
-          :delta="data.kpi.delta.total"
+          :delta="data?.kpi.delta.total"
           icon="wifi"
           tone="blue"
         />
         <KpiCard
           label="活跃用户"
+          :loading="!data"
           :value="users"
           :unit="usersUnit"
-          :delta="data.kpi.delta.users"
+          :delta="data?.kpi.delta.users"
           icon="user"
           tone="teal"
         />
         <KpiCard
           label="峰值速率"
+          :loading="!data"
           :value="peak.value"
           :unit="peak.unit"
-          :delta="data.kpi.delta.peak"
+          :delta="data?.kpi.delta.peak"
           icon="activity"
           tone="violet"
         />
       </section>
 
       <div class="metric-strip">
-        <span>5G 分流比<strong class="num">{{ data.kpi.fiveGShare.toFixed(1) }}%</strong></span>
-        <span>忙时高负载占比<strong class="num">{{ data.kpi.busyCellRatio.toFixed(1) }}%</strong></span>
-        <span class="overview-note"><Icon name="clock" :size="14" />峰值出现在 {{ peakLabel }}</span>
+        <span>5G 分流比<strong class="num">{{ data?.kpi.fiveGShare.toFixed(1) ?? '—' }}%</strong></span>
+        <span>忙时高负载占比<strong class="num">{{ data?.kpi.busyCellRatio.toFixed(1) ?? '—' }}%</strong></span>
+        <span class="overview-note"><Icon name="clock" :size="14" />峰值出现在 {{ data ? peakLabel : '—' }}</span>
       </div>
 
       <div class="section-heading"><h2>流量表现</h2><p>{{ rangeLabel }} · {{ ui.region === 'all' ? '全国' : ui.region }}</p></div>
@@ -213,7 +216,7 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
               明细<Icon name="chevron-right" :size="12" />
             </button>
           </template>
-          <BaseChart :option="trendOption" height="290px" :replace-merge="['series']" />
+          <BaseChart :option="trendOption" :loading="loading && !data" height="290px" :replace-merge="['series']" />
           <p class="chart-note">每个点为一个小时的流量读数<span v-if="ui.compare"> · 空心点为上期</span></p>
         </Panel>
 
@@ -223,15 +226,15 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
               地图<Icon name="chevron-right" :size="12" />
             </button>
           </template>
-          <div class="region-lead"><strong class="num">{{ data.regionShare[0]?.share.toFixed(1) }}<small>%</small></strong><span>{{ data.regionShare[0]?.region }}贡献最多流量</span></div>
-          <BaseChart :option="regionRankOption" height="224px" />
+          <div class="region-lead"><strong v-liquid="Boolean(data)" class="num">{{ data?.regionShare[0]?.share.toFixed(1) ?? '—' }}<small>%</small></strong><span>{{ data?.regionShare[0]?.region ?? '—' }}贡献最多流量</span></div>
+          <BaseChart :option="regionRankOption" :loading="loading && !data" height="224px" />
           <p class="chart-note">每刻度 {{ fmtBytes(regionTickUnit, 0) }} · 末刻度高度表示不足一格的余量</p>
         </Panel>
       </div>
 
       <div class="section-heading"><h2>需要关注</h2><p>高负载小区与近期告警</p></div>
       <div class="grid grid--bottom">
-        <Panel title="重点小区负载 TOP 5" sub="按忙时利用率排序，点击查看趋势" flush>
+        <Panel title="重点小区负载 TOP 5" sub="按忙时利用率排序，点击查看趋势" :loading="loading && !data" flush>
           <template #actions>
             <button class="btn btn--sm" @click="router.push('/cells')">
               全部小区<Icon name="chevron-right" :size="12" />
@@ -248,7 +251,7 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="c in data.topCells" :key="c.id" class="row-click" @click="openCell(c)">
+                <tr v-for="c in data?.topCells" :key="c.id" class="row-click" @click="openCell(c)">
                   <td>
                     <div class="cell-name">{{ c.name }}</div>
                     <div class="cell-id mono">{{ c.id }} · {{ c.city }}</div>
@@ -269,12 +272,12 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
           </div>
         </Panel>
 
-        <Panel title="实时告警" sub="待处理优先，点击查看全部">
+        <Panel title="实时告警" sub="待处理优先，点击查看全部" :loading="loading && !data">
           <template #actions>
             <button class="btn btn--sm" @click="ui.alertsOpen = true">告警中心</button>
           </template>
           <ul class="alert-list">
-            <li v-for="a in data.alerts.slice(0, 4)" :key="a.id" class="alert-item" @click="ui.alertsOpen = true">
+            <li v-for="a in data?.alerts.slice(0, 4)" :key="a.id" class="alert-item" @click="ui.alertsOpen = true">
               <span class="alert-level" :class="`is-${a.level}`">{{ a.level }}</span>
               <div class="alert-body">
                 <p>{{ a.message }}</p>
@@ -284,26 +287,13 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
             </li>
           </ul>
           <div class="alert-foot">
-            <span><span class="dot dot--pulse" style="color: var(--red)" />{{ data.alerts.filter((a) => a.status === '待处理').length }} 条待处理</span>
-            <span class="muted">{{ data.alerts.length }} 条近期告警</span>
+            <span><span class="dot dot--pulse" style="color: var(--red)" />{{ data?.alerts.filter((a) => a.status === '待处理').length ?? '—' }} 条待处理</span>
+            <span class="muted">{{ data?.alerts.length ?? '—' }} 条近期告警</span>
           </div>
         </Panel>
       </div>
     </template>
 
-    <div v-else class="skeleton-page">
-      <div class="kpi-grid">
-        <div v-for="i in 3" :key="i" class="skeleton kpi-skel" />
-      </div>
-      <div class="grid grid--main">
-        <div class="skeleton panel-skel" />
-        <div class="skeleton panel-skel" />
-      </div>
-      <div class="grid grid--bottom">
-        <div class="skeleton panel-skel" />
-        <div class="skeleton panel-skel" />
-      </div>
-    </div>
   </div>
 </template>
 

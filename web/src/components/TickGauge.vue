@@ -11,7 +11,7 @@ const ticks = computed(() => Array.from({ length: 100 }, (_, index) => ({ start:
 </script>
 
 <template>
-  <svg class="tick-gauge" viewBox="0 0 320 218" role="img" :aria-label="`忙时利用率 ${value.toFixed(1)}%，预警 ${warn}%，拥塞 ${congest}%`" data-template="F11">
+  <svg v-liquid data-liquid-svg class="tick-gauge" viewBox="0 0 320 218" role="img" :aria-label="`忙时利用率 ${value.toFixed(1)}%，预警 ${warn}%，拥塞 ${congest}%`" data-template="F11">
     <line v-for="(tick, index) in ticks" :key="index" :x1="tick.start.x" :y1="tick.start.y" :x2="tick.end.x" :y2="tick.end.y" :stroke="tick.active ? tone : 'var(--border-strong)'" :stroke-width="tick.active ? 1.7 : 1" />
     <circle :cx="point(value, 129).x" :cy="point(value, 129).y" r="3" :fill="tone" />
     <text x="160" y="150" text-anchor="middle" class="gauge-value" :fill="tone">{{ value.toFixed(1) }}<tspan class="gauge-unit">%</tspan></text>

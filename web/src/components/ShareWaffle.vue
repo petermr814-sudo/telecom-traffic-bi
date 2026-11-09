@@ -17,7 +17,7 @@ const description = computed(() => groups.value.map(item => `${item.name} ${item
 
 <template>
   <div class="share-waffle" data-template="G4">
-    <svg viewBox="0 0 300 145" role="img" :aria-label="description">
+    <svg v-liquid data-liquid-svg viewBox="0 0 300 145" role="img" :aria-label="description">
       <circle v-for="(item, index) in dots" :key="index" :cx="10 + (index % 20) * 14.7" :cy="14 + Math.floor(index / 20) * 25" r="5.2" :fill="item.color" :data-group="item.name"><title>{{ item.name }} · {{ item.share.toFixed(1) }}%</title></circle>
     </svg>
     <ul class="waffle-legend">

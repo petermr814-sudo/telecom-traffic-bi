@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import Icon from './Icon.vue'
+import LiquidLoader from './LiquidLoader.vue'
 
 withDefaults(defineProps<{
   title: string
@@ -32,8 +33,7 @@ defineEmits<{ (e: 'retry'): void }>()
         <button class="btn btn--sm" @click="$emit('retry')">重试</button>
       </div>
       <div v-else-if="loading" class="state state--loading">
-        <span class="spinner" />
-        <p>正在加载数据…</p>
+        <LiquidLoader />
       </div>
       <slot v-else />
     </div>
@@ -65,12 +65,4 @@ defineEmits<{ (e: 'retry'): void }>()
   gap: 12px;
 }
 
-.spinner {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 2px solid var(--border-strong);
-  border-top-color: var(--primary);
-  animation: spin 0.8s linear infinite;
-}
 </style>

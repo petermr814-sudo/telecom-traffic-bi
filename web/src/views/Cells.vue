@@ -47,6 +47,7 @@ async function switchScatter(view: 'strip' | 'users', event: MouseEvent) {
   if (view === scatterView.value) return
   const version = ++switchVersion
   const chart = scatterChart.value?.getChart()
+  scatterChart.value?.finishLoadingMotion()
   const root = scatterPanel.value?.$el as HTMLElement | undefined
   const animate = event.detail > 0 && !reduceMotion.value && root && chart && !chart.isDisposed()
   animateScatter.value = Boolean(animate)
@@ -63,7 +64,7 @@ async function switchScatter(view: 'strip' | 'users', event: MouseEvent) {
   }
 }
 
-const { data, error, run } = useAsync(
+const { data, error, loading, run } = useAsync(
   () => api.cells(ui.range, ui.region, ui.settings.warn, ui.settings.congest),
   () => [ui.range, ui.region, ui.tick, ui.settings.warn, ui.settings.congest]
 )
@@ -231,26 +232,26 @@ onUnmounted(() => {
     <button class="btn btn--primary" @click="run">重试</button>
   </div>
 
-  <div v-else-if="data" class="page">
+  <div v-else class="page">
     <section class="stats">
       <button class="stat" :class="{ 'is-active': status === 'all' }" @click="status = 'all'">
         <span class="stat-icon blue"><Icon name="tower" :size="16" /></span>
-        <div><span>重点小区</span><strong class="num">{{ summary.total }}</strong></div>
+        <div><span>重点小区</span><strong v-liquid="Boolean(data)" class="num">{{ data ? summary.total : '—' }}</strong></div>
         <span class="stat-sub">平均利用率 {{ summary.avgUtil.toFixed(1) }}%</span>
       </button>
       <button class="stat" :class="{ 'is-active': status === '预警' }" @click="setStatus('预警')">
         <span class="stat-icon amber"><Icon name="alert" :size="16" /></span>
-        <div><span>预警小区</span><strong class="num">{{ summary.warning }}</strong></div>
+        <div><span>预警小区</span><strong v-liquid="Boolean(data)" class="num">{{ data ? summary.warning : '—' }}</strong></div>
         <span class="stat-sub">利用率 ≥ {{ ui.settings.warn }}%</span>
       </button>
       <button class="stat" :class="{ 'is-active': status === '拥塞' }" @click="setStatus('拥塞')">
         <span class="stat-icon red"><Icon name="zap" :size="16" /></span>
-        <div><span>拥塞小区</span><strong class="num">{{ summary.congested }}</strong></div>
+        <div><span>拥塞小区</span><strong v-liquid="Boolean(data)" class="num">{{ data ? summary.congested : '—' }}</strong></div>
         <span class="stat-sub">利用率 ≥ {{ ui.settings.congest }}%</span>
       </button>
       <button class="stat" @click="expandOpen = true">
         <span class="stat-icon green"><Icon name="sparkles" :size="16" /></span>
-        <div><span>可扩容</span><strong class="num">{{ summary.expandable }}</strong></div>
+        <div><span>可扩容</span><strong v-liquid="Boolean(data)" class="num">{{ data ? summary.expandable : '—' }}</strong></div>
         <span class="stat-sub">生成扩容建议 →</span>
       </button>
     </section>
@@ -258,20 +259,20 @@ onUnmounted(() => {
     <div class="section-heading"><h2>网络负载概况</h2><p>分布与用户规模共同判断扩容优先级</p></div>
     <div class="grid grid--charts">
       <Panel data-template="F14" title="利用率分布" sub="每 5% 为一个连续区间 · 每横档为 1 个小区">
-        <BaseChart :option="histOption" height="250px" :replace-merge="['series']" />
+        <BaseChart :option="histOption" :loading="loading && !data" height="250px" :replace-merge="['series']" />
         <p class="chart-note">{{ rows.length }} 个小区完整分布 · 中位利用率 {{ histogram.median.toFixed(1) }}%</p>
       </Panel>
       <Panel ref="scatterPanel" class="scatter-panel" :data-template="scatterView === 'strip' ? 'G15' : 'G9'" :title="scatterView === 'strip' ? '按网络制式看利用率' : '用户数 × 利用率'" :sub="scatterView === 'strip' ? '每点为一个小区 · 纵向错开仅用于辨认' : '气泡面积表示日流量 · 点击查看小区'">
         <template #actions>
           <div class="seg seg--sm" role="group" aria-label="图表维度"><button class="seg__item" :class="{ 'is-active': scatterView === 'strip' }" :aria-pressed="scatterView === 'strip'" @click="switchScatter('strip', $event)">制式分布</button><button class="seg__item" :class="{ 'is-active': scatterView === 'users' }" :aria-pressed="scatterView === 'users'" @click="switchScatter('users', $event)">用户规模</button></div>
         </template>
-        <BaseChart ref="scatterChart" :option="scatterOption" height="250px" :replace-merge="['series', 'xAxis', 'yAxis']" @chart-click="onScatterClick" />
+        <BaseChart ref="scatterChart" :option="scatterOption" :loading="loading && !data" height="250px" :replace-merge="['series', 'xAxis', 'yAxis']" @chart-click="onScatterClick" />
         <p class="chart-note">展示全部 {{ rows.length }} 个小区 · 红点为拥塞小区</p>
       </Panel>
     </div>
 
     <div class="section-heading"><h2>定位与处理</h2><p>先筛选目标小区，再生成扩容建议</p></div>
-    <Panel class="cells-table" title="小区清单" :sub="`${filtered.length} 个小区 · 点击行查看详情`" flush>
+    <Panel class="cells-table" title="小区清单" :sub="`${filtered.length} 个小区 · 点击行查看详情`" :loading="loading && !data" flush>
       <template #actions>
         <div class="filters">
           <div class="search">
@@ -343,11 +344,6 @@ onUnmounted(() => {
     </Panel>
   </div>
 
-  <div v-else class="skeleton-page">
-    <div class="skeleton stats-skel" />
-    <div class="grid grid--charts"><div class="skeleton chart-skel" /><div class="skeleton chart-skel" /></div>
-    <div class="skeleton table-skel" />
-  </div>
 
   <Modal :open="expandOpen" title="扩容建议" :sub="`基于 ${ui.range === 'today' ? '今日' : ui.range === '7d' ? '近 7 天' : '近 30 天'}忙时利用率，共 ${suggestions.length} 条`" width="720px" @close="expandOpen = false">
     <div class="plan-tip">

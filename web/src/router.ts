@@ -10,6 +10,10 @@ const router = createRouter({
   routes: [
     { path: '/', redirect: '/overview' },
     {
+      path: '/loading-motion', name: 'loading-motion', component: () => import('@/views/LoadingMotion.vue'),
+      meta: { title: '液态加载动效', subtitle: '液滴聚合、轮廓延展、数据归位', group: '设计预览', hideFilters: true, modeLabel: '动效预览' },
+    },
+    {
       path: '/overview',
       name: 'overview',
       component: Overview,

@@ -4,5 +4,6 @@ import router from './router'
 import './styles/tokens.css'
 import './styles/base.css'
 import './styles/layout.css'
+import { vLiquid } from './lib/liquidReveal'
 
-createApp(App).use(router).mount('#app')
+createApp(App).directive('liquid', vLiquid).use(router).mount('#app')

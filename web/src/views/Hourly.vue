@@ -185,7 +185,7 @@ onUnmounted(() => {
 <template>
   <div class="page hourly-page">
     <div v-if="heat.error.value" class="card error-card"><Icon name="alert" :size="22" /><div><strong>时段数据加载失败</strong><p>{{ heat.error.value }}</p></div><button class="btn" @click="heat.run">重试</button></div>
-    <template v-else-if="heat.data.value">
+    <template v-else>
       <Panel class="weekly-panel" data-template="F10" title="周 × 小时流量热力图" :sub="`${dateSpan} · ${ui.region === 'all' ? '全国' : ui.region}`">
         <template #actions><div class="seg" aria-label="热力图统计方式"><button class="seg__item" :class="{ 'is-active': heatMode === 'abs' }" @click="heatMode = 'abs'">绝对值</button><button class="seg__item" :class="{ 'is-active': heatMode === 'share' }" @click="heatMode = 'share'">占当天</button></div></template>
         <div class="heatmap-explorer">
@@ -193,7 +193,7 @@ onUnmounted(() => {
             <div class="day-picker-mask" aria-hidden="true" :style="pickerMaskStyle" />
             <button v-for="day in dayButtons" :key="day.index" class="day-button" :class="{ 'is-selected': selectedDay === day.index }" :aria-pressed="selectedDay === day.index" :aria-label="`查看 ${day.date.format('YYYY-MM-DD')} 的统计详情`" @click="chooseDay(day.index)"><strong>{{ day.date.format('MM-DD') }}</strong><span>{{ weekdayLabels[day.date.day()] }}</span><Icon name="chevron-right" :size="12" /></button>
           </nav>
-          <BaseChart :option="heatOption" height="360px" :replace-merge="['series', 'visualMap']" @chart-click="onHeatClick" />
+          <BaseChart :option="heatOption" :loading="heat.loading.value && !heat.data.value" height="360px" :replace-merge="['series', 'visualMap']" @chart-click="onHeatClick" />
         </div>
         <div class="heat-footer"><span class="heat-help"><Icon name="calendar" :size="13" />选择左侧日期，展开当天统计与图表</span><span>{{ heatMode === 'abs' ? '点面积表示流量' : '每行合计 100%' }} · 圆环自动标注峰值时段</span></div>
       </Panel>
@@ -223,7 +223,6 @@ onUnmounted(() => {
       </section>
       <div v-else class="day-placeholder"><Icon name="calendar" :size="20" /><div><strong>先看整周规律，再看一天的细节</strong><p>点击热力图左侧的日期，即可展开当天统计卡片和详细图表。</p></div></div>
     </template>
-    <div v-else class="skeleton weekly-skeleton" aria-label="正在加载整周流量" />
   </div>
 </template>
 
