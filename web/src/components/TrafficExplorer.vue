@@ -11,7 +11,7 @@ import type { ProvinceRow } from '@/api/types'
 import { useAsync } from '@/lib/useAsync'
 import { aggregateCities, cityMetric, type MapMetric } from '@/lib/cityTraffic'
 import { fmtBytes, fmtCount, fmtDelta } from '@/lib/format'
-import { axisLabel, splitLine, tooltipBase } from '@/lib/chart'
+import { axisLabel, tooltipBase } from '@/lib/chart'
 import { ui } from '@/stores/ui'
 
 const props = defineProps<{ provinces: ProvinceRow[] }>()
@@ -96,23 +96,23 @@ const trendOption = computed(() => {
     animationDuration: 250,
     grid: { left: 8, right: 16, top: 20, bottom: 6, containLabel: true },
     tooltip: { ...tooltipBase, trigger: 'axis', valueFormatter: (v: any) => `${Number(v).toFixed(1)}%` },
-    xAxis: { type: 'category', data: dailyLabels.value, boundaryGap: false, axisTick: { show: false }, axisLine: { show: false }, axisLabel },
-    yAxis: { type: 'value', min: 0, max: 100, splitNumber: 4, axisLabel: { ...axisLabel, formatter: '{value}%' }, splitLine },
-    series: [{ name: '带宽加权利用率', type: 'line', smooth: 0.3, symbol: 'circle', symbolSize: 5, data: city?.trend.map(v => +v.toFixed(1)) ?? [], lineStyle: { color: '#268c99', width: 2.5 }, itemStyle: { color: '#268c99', borderWidth: 2, borderColor: '#fff' }, areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: '#268c9930' }, { offset: 1, color: '#268c9900' }] } }, markLine: { silent: true, symbol: 'none', label: { show: false }, lineStyle: { color: '#d59e59', type: 'dashed', width: 1 }, data: [{ yAxis: ui.settings.warn }] } }]
+    xAxis: { type: 'category', data: dailyLabels.value, boundaryGap: false, axisTick: { show: false }, axisLine: { show: false }, axisLabel: { ...axisLabel, color: '#9aa791', fontSize: 10 } },
+    yAxis: { type: 'value', min: 0, max: 100, splitNumber: 4, axisLabel: { ...axisLabel, color: '#9aa791', fontSize: 10, formatter: '{value}%' }, splitLine: { lineStyle: { color: '#e9ede3' } } },
+    series: [{ name: '带宽加权利用率', type: 'line', smooth: 0.35, symbol: 'circle', symbolSize: 5, data: city?.trend.map(v => +v.toFixed(1)) ?? [], lineStyle: { color: '#2e7a6f', width: 2.5 }, itemStyle: { color: '#2e7a6f', borderWidth: 2, borderColor: '#fff' }, areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(46,122,111,.16)' }, { offset: 1, color: 'rgba(46,122,111,0)' }] } }, markLine: { silent: true, symbol: 'none', lineStyle: { color: '#d59e59', type: 'dashed', width: 1.25 }, label: { show: true, position: 'end', distance: 8, formatter: `预警 ${ui.settings.warn}%`, color: '#a9772f', fontSize: 9, backgroundColor: '#fbf3e2', borderRadius: 5, padding: [2, 5] }, data: [{ yAxis: ui.settings.warn }] } }]
   } as any
 })
 const networkOption = computed(() => ({
   animationDuration: 250,
   tooltip: { ...tooltipBase, formatter: (p: any) => `${p.name}<br/>${fmtBytes(p.value, 1)} · ${p.percent}%` },
-  series: [{ type: 'pie', radius: ['63%', '82%'], center: ['50%', '48%'], label: { show: false }, itemStyle: { borderWidth: 4, borderColor: '#fff', borderRadius: 5 }, data: ['5G', '4G'].map((name, i) => ({ name, value: selectedCity.value?.cells.filter(c => c.generation === name).reduce((s, c) => s + c.traffic, 0) ?? 0, itemStyle: { color: i ? '#d9e5ee' : '#268c99' } })) }]
+  series: [{ type: 'pie', radius: ['58%', '80%'], center: ['50%', '48%'], label: { show: false }, itemStyle: { borderWidth: 2, borderColor: '#fff', borderRadius: 6 }, data: ['5G', '4G'].map((name, i) => ({ name, value: selectedCity.value?.cells.filter(c => c.generation === name).reduce((s, c) => s + c.traffic, 0) ?? 0, itemStyle: { color: i ? '#d5e1d8' : '#2e7a6f' } })) }]
 }) as any)
 const cellOption = computed(() => ({
   animationDuration: 250,
   grid: { left: 5, right: 58, top: 6, bottom: 4, containLabel: true },
   tooltip: { ...tooltipBase, formatter: (p: any) => `${selectedCity.value?.cells[p.dataIndex]?.name ?? ''}<br/>${fmtBytes(p.value, 1)} · 点击查看小区` },
   xAxis: { type: 'value', show: false },
-  yAxis: { type: 'category', inverse: true, data: selectedCity.value?.cells.slice(0, 5).map(c => c.name.replace(selectedCity.value!.name, '')) ?? [], axisTick: { show: false }, axisLine: { show: false }, axisLabel: { ...axisLabel, width: 94, overflow: 'truncate' } },
-  series: [{ type: 'bar', barWidth: 10, showBackground: true, backgroundStyle: { color: '#f2f5f8', borderRadius: 4 }, itemStyle: { color: '#75aeb8', borderRadius: 4 }, label: { show: true, position: 'right', color: '#607388', fontSize: 10, formatter: (p: any) => fmtBytes(p.value, 0) }, data: selectedCity.value?.cells.slice(0, 5).map(c => c.traffic) ?? [] }]
+  yAxis: { type: 'category', inverse: true, data: selectedCity.value?.cells.slice(0, 5).map(c => c.name.replace(selectedCity.value!.name, '')) ?? [], axisTick: { show: false }, axisLine: { show: false }, axisLabel: { ...axisLabel, width: 108, overflow: 'truncate', color: '#7f8f7e', fontSize: 10, formatter: (v: string, i: number) => `${String(i + 1).padStart(2, '0')} ${v}` } },
+  series: [{ type: 'bar', barWidth: 9, showBackground: true, backgroundStyle: { color: '#eef1ea', borderRadius: 5 }, itemStyle: { color: '#2e7a6f', borderRadius: [0, 5, 5, 0] }, emphasis: { itemStyle: { color: '#27685f' } }, label: { show: true, position: 'right', color: '#5d7168', fontSize: 10, formatter: (p: any) => fmtBytes(p.value, 0) }, data: selectedCity.value?.cells.slice(0, 5).map(c => c.traffic) ?? [] }]
 }) as any)
 const regionRows = computed(() => {
   const regions = new Map<string, number>()
@@ -169,9 +169,9 @@ const regionRows = computed(() => {
     <div v-if="selectedCity" class="city-analysis" :data-city="selectedCity.name">
       <div class="analysis-heading"><div><span class="eyebrow">CITY DEEP DIVE</span><h3>{{ selectedCity.name }} · 网络运行画像</h3></div><span>{{ rangeLabel }} · {{ selectedCity.cells.length }} 个重点小区</span></div>
       <div class="analysis-charts">
-        <Panel title="近 7 日负载趋势" sub="截至数据最新日期 · 按带宽加权的忙时利用率"><template #actions><span class="chart-note"><i />预警 {{ ui.settings.warn }}%</span></template><BaseChart :option="trendOption" height="210px" :replace-merge="['series']" /></Panel>
-        <Panel title="网络流量结构" :sub="`${rangeLabel} · 按 4G / 5G 分类`"><div class="donut-wrap"><BaseChart :option="networkOption" height="174px" :replace-merge="['series']" /><div class="donut-center"><strong>{{ selectedCity.fiveGShare.toFixed(1) }}<small>%</small></strong><span>5G 流量</span></div></div><div class="network-legend"><span><i />5G</span><span><i />4G</span></div></Panel>
-        <Panel title="重点小区 TOP 5" :sub="`${rangeLabel}流量 · 点击条形查看详情`"><BaseChart :option="cellOption" height="210px" :replace-merge="['series']" @chart-click="p => { if (selectedCity?.cells[p.dataIndex]) ui.cellDetail = selectedCity.cells[p.dataIndex] }" /></Panel>
+        <Panel title="近 7 日负载趋势" sub="截至数据最新日期 · 按带宽加权的忙时利用率"><template #icon><span class="spec-no">01</span></template><template #actions><span class="chart-note"><i />预警 {{ ui.settings.warn }}%</span></template><BaseChart :option="trendOption" height="210px" :replace-merge="['series']" /></Panel>
+        <Panel title="网络流量结构" :sub="`${rangeLabel} · 按 4G / 5G 分类`"><template #icon><span class="spec-no">02</span></template><div class="donut-wrap"><BaseChart :option="networkOption" height="174px" :replace-merge="['series']" /><div class="donut-center"><strong>{{ selectedCity.fiveGShare.toFixed(1) }}<small>%</small></strong><span>5G 流量</span></div></div><div class="network-legend"><span><i />5G<b class="num">{{ selectedCity.fiveGShare.toFixed(1) }}%</b></span><span><i />4G<b class="num">{{ (100 - selectedCity.fiveGShare).toFixed(1) }}%</b></span></div></Panel>
+        <Panel title="重点小区 TOP 5" :sub="`${rangeLabel}流量 · 点击条形查看详情`"><template #icon><span class="spec-no">03</span></template><BaseChart :option="cellOption" height="210px" :replace-merge="['series']" @chart-click="p => { if (selectedCity?.cells[p.dataIndex]) ui.cellDetail = selectedCity.cells[p.dataIndex] }" /></Panel>
       </div>
       <p class="data-note"><Icon name="info" :size="13" />城市数据汇总自已覆盖的重点小区；用户数为小区用户数合计，未经跨小区去重。近 7 日趋势固定使用数据集最新 7 天，不受累计时间范围影响。</p>
     </div>
@@ -264,8 +264,11 @@ const regionRows = computed(() => {
 .analysis-heading h3 { margin-top: 7px; font-size: 17px; font-weight: 550; }
 .analysis-heading > span { font-size: 11px; color: var(--text-3); }
 .analysis-charts { display: grid; grid-template-columns: 1.3fr .85fr 1.1fr; gap: 18px; }
-.analysis-charts :deep(.panel-head) { padding: 22px 20px 0; }
-.analysis-charts :deep(.panel-body) { padding: 18px 14px; }
+.analysis-charts :deep(.panel) { border-color: #e2e9e0; border-radius: 14px; box-shadow: 0 6px 20px #233d3008; }
+.analysis-charts :deep(.panel-head) { padding: 20px 20px 14px; border-bottom: 1px solid #eef2ea; }
+.analysis-charts :deep(.panel-title) { font-size: 15px; letter-spacing: .01em; }
+.analysis-charts :deep(.panel-body) { padding: 16px 14px 18px; }
+.spec-no { font: 10px var(--mono); color: #93a08f; letter-spacing: .12em; }
 .chart-note { display: flex; gap: 5px; align-items: center; font-size: 9px; color: var(--text-3); white-space: nowrap; }
 .chart-note i { width: 12px; border-top: 1px dashed #d59e59; }
 .donut-wrap { position: relative; }
@@ -275,8 +278,9 @@ const regionRows = computed(() => {
 .donut-center span { font-size: 10px; color: var(--text-3); }
 .network-legend { display: flex; justify-content: center; gap: 25px; font-size: 10px; color: var(--text-2); padding-top: 10px; }
 .network-legend span { display: inline-flex; align-items: center; gap: 7px; }
-.network-legend i { width: 7px; height: 7px; border-radius: 2px; background: #268c99; }
-.network-legend span + span i { background: #d9e5ee; }
+.network-legend i { width: 7px; height: 7px; border-radius: 2px; background: #2e7a6f; }
+.network-legend span + span i { background: #d5e1d8; }
+.network-legend b { font-weight: 500; color: #5d7168; margin-left: 2px; }
 .data-note { display: flex; gap: 7px; color: var(--text-3); font-size: 10px; line-height: 1.8; margin: 13px 2px 0; }
 .data-note > svg { flex-shrink: 0; margin-top: 3px; }
 .national-insight { display: flex; gap: 30px; padding: 24px 28px; margin-top: 24px; background: white; border: 1px solid var(--border); border-radius: 14px; align-items: center; }
