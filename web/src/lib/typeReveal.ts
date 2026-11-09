@@ -9,6 +9,7 @@ interface TypeState {
   anim: TextAnim | null
   composing: boolean
   media: MediaQueryList
+  shown: string
 }
 const states = new WeakMap<HTMLInputElement, TypeState>()
 
@@ -25,20 +26,42 @@ export const vTypeReveal: Directive<HTMLInputElement, void> = {
     text.className = 'type-reveal__text'
     text.setAttribute('aria-hidden', 'true')
     wrap.appendChild(text)
-    el.classList.add('type-reveal__input')
-    // 覆盖层对齐 input 的文字起点（border + padding）与字体
+    // 覆盖层对齐 input 的文字起点（border + padding）与字体。
+    // 必须在加透明类之前完成取色：透明类把 input 文字变成 transparent，
+    // 而 getComputedStyle 返回活对象，加类后再读会把透明色抄给覆盖层，文字就看不见了。
     const cs = getComputedStyle(el)
     text.style.left = `${parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft)}px`
     text.style.top = `${parseFloat(cs.borderTopWidth)}px`
     text.style.font = cs.font
     text.style.letterSpacing = cs.letterSpacing
     text.style.color = cs.color
-    const state: TypeState = { wrap, text, anim: null, composing: false, media }
+    el.classList.add('type-reveal__input')
+    const state: TypeState = { wrap, text, anim: null, composing: false, media, shown: '' }
     const sync = () => {
-      if (state.media.matches) return
       state.anim?.cancel()
-      text.textContent = el.value
-      state.anim = el.value ? animateTexts(text) : null
+      const value = el.value
+      // 减少动态效果：直接呈现纯文字（镜像必须更新，否则透明 input 下文字不可见）
+      if (state.media.matches) {
+        text.textContent = value
+        state.shown = value
+        return
+      }
+      // 仅新增字符逐字浮现，已有文字保持不动；删除/改写不播动画，直接落定
+      const prev = state.shown
+      if (prev && value.startsWith(prev) && value.length > prev.length) {
+        text.textContent = prev
+        const holder = document.createElement('span')
+        holder.textContent = value.slice(prev.length)
+        text.appendChild(holder)
+        state.anim = animateTexts(holder)
+      } else if (!prev && value) {
+        text.textContent = value
+        state.anim = animateTexts(text)
+      } else {
+        text.textContent = value
+        state.anim = null
+      }
+      state.shown = value
     }
     el.addEventListener('compositionstart', () => { state.composing = true })
     el.addEventListener('compositionend', () => { state.composing = false; sync() })
