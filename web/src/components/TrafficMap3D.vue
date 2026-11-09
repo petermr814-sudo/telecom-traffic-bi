@@ -9,8 +9,11 @@ import { TerrainSelectionShadow } from '@/lib/terrainSelectionShadow'
 import type { ProvinceRow } from '@/api/types'
 import { cityMetric, type CityTraffic, type MapMetric } from '@/lib/cityTraffic'
 
-const props = defineProps<{ cities: CityTraffic[]; provinces: ProvinceRow[]; metric: MapMetric; selected: string | null }>()
-const emit = defineEmits<{ select: [name: string]; reset: []; moving: [value: boolean] }>()
+const props = withDefaults(defineProps<{ cities: CityTraffic[]; provinces: ProvinceRow[]; metric: MapMetric; selected: string | null; selectedProvince?: string; showProvinceBoundaries?: boolean }>(), {
+  selectedProvince: '',
+  showProvinceBoundaries: true
+})
+const emit = defineEmits<{ select: [name: string]; reset: []; moving: [value: boolean]; 'province-select': [name: string] }>()
 type Coordinate = [number, number]
 type Feature = { properties: { name: string; center?: Coordinate; province?: string }; geometry: { type: string; coordinates: Coordinate[][] | Coordinate[][][] } }
 const host = ref<HTMLDivElement>()
@@ -20,7 +23,9 @@ const error = ref('')
 const moving = ref(false)
 const zooming = ref(false)
 const insetPaths = ref<string[]>([])
+const provincePins = ref<{ name: string; label: string; center: Coordinate }[]>([])
 const selectedCity = computed(() => props.cities.find(c => c.name === props.selected))
+const visibleCities = computed(() => props.selectedProvince ? props.cities.filter(c => c.province === props.selectedProvince) : [])
 let renderer: THREE.WebGLRenderer | undefined
 let controls: OrbitControls | undefined
 const scene = new THREE.Scene()
@@ -32,6 +37,7 @@ const focusGroup = new THREE.Group()
 const contextGroup = new THREE.Group()
 const selectionShadow = new TerrainSelectionShadow()
 let manifest: TerrainManifest | undefined
+let provinceGeo: Feature[] = []
 let nationalDem: ElevationRaster | undefined
 let activeDem: ElevationRaster | undefined
 let nationalSurface: THREE.Mesh | undefined
@@ -70,10 +76,18 @@ let cameraMotion: MapCameraMotion | undefined
 let cameraReady = false
 let lastNow = 0
 
+function mercator(value: number) {
+  return Math.log(Math.tan(Math.PI / 4 + value * Math.PI / 360)) * 180 / Math.PI
+}
+const MERCATOR_36 = mercator(36)
 function project([lng, lat]: Coordinate) {
   // A single Mercator projection is shared by the province and city boundaries.
-  const mercator = (v: number) => Math.log(Math.tan(Math.PI / 4 + v * Math.PI / 360)) * 180 / Math.PI
-  return new THREE.Vector2((lng - 104.5) * 1.12, (mercator(lat) - mercator(36)) * 1.12)
+  return new THREE.Vector2((lng - 104.5) * 1.12, (mercator(lat) - MERCATOR_36) * 1.12)
+}
+function unproject(point: THREE.Vector3): Coordinate {
+  const lng = point.x / 1.12 + 104.5
+  const lat = 360 / Math.PI * Math.atan(Math.exp((-point.z / 1.12 + MERCATOR_36) * Math.PI / 180)) - 90
+  return [lng, lat]
 }
 function polygons(feature: Feature): Coordinate[][][] {
   return feature.geometry.type === 'Polygon' ? [feature.geometry.coordinates as Coordinate[][]] : feature.geometry.coordinates as Coordinate[][][]
@@ -113,7 +127,16 @@ function addBoundary(feature: Feature, group: THREE.Group, selected = false) {
       }
     }
     const geometry = new THREE.BufferGeometry().setFromPoints(points)
-    group.add(new THREE.LineLoop(geometry, new THREE.LineBasicMaterial({ color: selected ? '#4a6662' : '#a4aaa9', transparent: true, opacity: selected ? .95 : .22, depthWrite: false })))
+    const isProvince = group === provinceGroup && !selected
+    const line = new THREE.LineLoop(geometry, new THREE.LineBasicMaterial({
+      color: selected ? '#4a6662' : isProvince ? '#65766f' : '#a4aaa9',
+      transparent: true,
+      opacity: selected ? .95 : isProvince ? .62 : .3,
+      depthWrite: false,
+      depthTest: !isProvince
+    }))
+    if (isProvince) line.renderOrder = 4
+    group.add(line)
   }
 }
 function redrawBoundaries() {
@@ -130,7 +153,7 @@ async function loadCityTerrain() {
   const info = name && manifest?.cities[name]
   if (!info) {
     if (citySurface) { land.remove(citySurface); citySurface = undefined }
-    provinceGroup.visible = true
+    provinceGroup.visible = props.showProvinceBoundaries !== false
     activeDem = nationalDem
     terrainDetail.value = 'national'
     terrainStatus.value = '真实高程 · 垂直夸张 ×24'
@@ -169,7 +192,7 @@ async function loadCityTerrain() {
     wake()
   } catch (e) {
     if (!destroyed && request === detailRequest) {
-      provinceGroup.visible = true
+      provinceGroup.visible = props.showProvinceBoundaries !== false
       redrawBoundaries(); updateMarkers()
       terrainStatus.value = '城市精细地形载入失败 · 当前使用全国地形'
     }
@@ -207,8 +230,8 @@ function updateTerrainDetail() {
 function updateMarkers() {
   disposeGroup(markerGroup)
   markerObjects.clear()
-  const max = Math.max(...props.cities.map(c => Math.abs(cityMetric(c, props.metric, props.provinces))), 1)
-  for (const city of props.cities) {
+  const max = Math.max(...visibleCities.value.map(c => Math.abs(cityMetric(c, props.metric, props.provinces))), 1)
+  for (const city of visibleCities.value) {
     const geo = cityGeo.find(g => g.properties.name === city.name)
     if (!geo?.properties.center) continue
     const p = project(geo.properties.center)
@@ -255,8 +278,14 @@ function setMoving(value: boolean) {
   moving.value = value
   emit('moving', value)
 }
+function focusFeature() {
+  const city = cityGeo.find(g => g.properties.name === props.selected)
+  if (city) return city
+  if (!props.selectedProvince) return null
+  return provinceGeo.find(g => g.properties.name === props.selectedProvince) ?? null
+}
 function focusBounds() {
-  const feature = cityGeo.find(g => g.properties.name === props.selected)
+  const feature = focusFeature()
   if (feature) {
     const bounds = new THREE.Box3()
     for (const polygon of polygons(feature)) for (const point of polygon[0]) {
@@ -285,6 +314,7 @@ function clearOrbitInertia() {
 }
 function flyToCity(instant = false) {
   if (!controls || !cameraMotion || !nationalSurface || !width || !height) return
+  // 没有城市边界/地形的城市聚焦到所在省；返回全国时 focusBounds 会给出全国包围盒
   clearOrbitInertia()
   const bounds = focusBounds()
   const target = bounds.getCenter(new THREE.Vector3())
@@ -325,6 +355,24 @@ function renderLabels() {
     }
   }
 }
+function renderProvinceLabels() {
+  const labels = labelLayer.value?.querySelectorAll<HTMLButtonElement>('.province-pin')
+  if (!labels) return
+  const show = !props.selectedProvince
+  for (const label of labels) {
+    const pin = provincePins.value.find(item => item.name === label.dataset.province)
+    if (!show || !pin) { label.hidden = true; continue }
+    const p = project(pin.center)
+    projected.set(p.x, terrainHeight(pin.center) + .02, -p.y)
+    projected.y *= land.scale.y
+    projected.project(camera)
+    const x = (projected.x + 1) * width / 2
+    const y = (1 - projected.y) * height / 2
+    const onScreen = projected.z > -1 && projected.z < 1 && x > 24 && x < width - 28 && y > 58 && y < height - 64
+    label.hidden = !onScreen
+    if (!label.hidden) label.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`
+  }
+}
 function renderGeographyLabels() {
   host.value?.querySelectorAll<HTMLElement>('.geography-label').forEach((label, i) => {
     const point = geographyLabels[i].coords
@@ -359,6 +407,7 @@ function tick(now: number) {
     updateTerrainDetail()
     renderer.render(scene, camera)
     renderLabels()
+    renderProvinceLabels()
     renderGeographyLabels()
     dirty = false
   }
@@ -388,15 +437,50 @@ function hitCity(event: PointerEvent) {
   raycaster.setFromCamera(pointer, camera)
   return raycaster.intersectObjects(markerGroup.children, true)[0]?.object.userData.city as string | undefined
 }
+function insideRing(point: Coordinate, ring: Coordinate[]) {
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j]
+    if ((yi > point[1]) !== (yj > point[1]) && point[0] < (xj - xi) * (point[1] - yi) / (yj - yi) + xi) inside = !inside
+  }
+  return inside
+}
+function provinceAt(point: Coordinate) {
+  for (const feature of provinceGeo) {
+    for (const polygon of polygons(feature)) {
+      if (!insideRing(point, polygon[0])) continue
+      let inHole = false
+      for (let i = 1; i < polygon.length; i++) if (insideRing(point, polygon[i])) { inHole = true; break }
+      if (!inHole) return feature.properties.name
+    }
+  }
+  return undefined
+}
+function hitProvince(event: PointerEvent) {
+  if (!host.value || !nationalSurface) return undefined
+  const rect = host.value.getBoundingClientRect()
+  pointer.set((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1)
+  raycaster.setFromCamera(pointer, camera)
+  const hit = raycaster.intersectObject(nationalSurface, false)[0]
+  if (!hit) return undefined
+  return provinceAt(unproject(hit.point))
+}
+function selectProvince(name: string) {
+  if (name !== props.selectedProvince) emit('province-select', name)
+}
 function onDown(event: PointerEvent) { dragStart = { x: event.clientX, y: event.clientY } }
 function onUp(event: PointerEvent) {
   if (event.button !== 0 || !dragStart || Math.hypot(event.clientX - dragStart.x, event.clientY - dragStart.y) > 5) return
   const city = hitCity(event)
   if (city) selectCity(city)
+  else {
+    const province = hitProvince(event)
+    if (province) selectProvince(province)
+  }
   dragStart = undefined
 }
 function onMove(event: PointerEvent) {
-  if (renderer) renderer.domElement.style.cursor = hitCity(event) ? 'pointer' : 'grab'
+  if (renderer) renderer.domElement.style.cursor = hitCity(event) || hitProvince(event) ? 'pointer' : 'grab'
 }
 function cancelFlight() {
   cameraMotion?.stop()
@@ -409,9 +493,9 @@ function selectCity(name: string) {
   else emit('select', name)
 }
 function resetView() {
-  // Leaving a city flies home via the selected watch; when already national the
+  // Leaving a city or province flies home via the selected watcher; when already national the
   // button just re-frames the camera.
-  if (props.selected) emit('reset')
+  if (props.selected || props.selectedProvince) emit('reset')
   else flyToCity()
 }
 function zoom(factor: number) {
@@ -449,6 +533,15 @@ onMounted(async () => {
     }))
     if (destroyed || !host.value) return
     cityGeo = cities.features
+    provinceGeo = china.features
+    const provinceNames = new Set(props.provinces.map(province => province.province))
+    provincePins.value = china.features
+      .filter(feature => Boolean(feature.properties.center) && feature.properties.name && provinceNames.has(feature.properties.name))
+      .map(feature => ({
+        name: feature.properties.name,
+        label: feature.properties.name.replace(/(省|市|自治区|壮族|回族|维吾尔|特别行政区)/g, '') || feature.properties.name,
+        center: feature.properties.center!
+      }))
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75))
     renderer.setClearColor('#eeefed', 1)
@@ -470,6 +563,7 @@ onMounted(async () => {
     const fill = new THREE.DirectionalLight('#ffffff', 0.35)
     fill.position.set(30, 20, 35)
     land.add(provinceGroup, contextGroup, markerGroup, focusGroup)
+    provinceGroup.visible = props.showProvinceBoundaries !== false
     scene.add(sun, fill, land)
     scene.fog = new THREE.FogExp2('#eeefed', 0.002)
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshStandardMaterial({ color: '#e8e9e6', roughness: 0.94, metalness: 0.05 }))
@@ -523,11 +617,15 @@ onMounted(async () => {
     if (!destroyed) error.value = `${(e as Error).message}。可从城市列表继续查看数据。`
   } finally { loading.value = false }
 })
-watch(() => props.selected, () => {
+watch(() => props.showProvinceBoundaries, value => {
+  provinceGroup.visible = value !== false && !citySurface
+})
+
+watch(() => [props.selected, props.selectedProvince], () => {
   updateFocus()
   flyToCity()
 })
-watch(() => [props.metric, props.cities, props.provinces], () => { updateColors(); updateMarkers() })
+watch(() => [props.metric, props.cities, props.provinces, props.selectedProvince], () => { updateColors(); updateMarkers() })
 onUnmounted(() => {
   destroyed = true
   selectionShadow.dispose()
@@ -555,10 +653,11 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div ref="host" class="traffic-scene" :data-view="selected || 'national'" :data-moving="moving" :data-metric="metric" :data-terrain="terrainDetail" :aria-busy="loading" @keydown.esc.stop="emit('reset')">
-    <div class="scene-location"><span class="location-dot" /><span>{{ selected ? `${selectedCity?.province} / ${selected}` : '中国 · 全国视角' }}</span><span class="view-tag">{{ selected ? 'CITY' : '3D' }}</span></div>
+  <div ref="host" class="traffic-scene" :data-view="selected || 'national'" :data-province="selectedProvince" :data-moving="moving" :data-metric="metric" :data-terrain="terrainDetail" :aria-busy="loading" @keydown.esc.stop="emit('reset')">
+    <div class="scene-location"><span class="location-dot" /><span>{{ selected ? `${selectedCity?.province} / ${selected}` : selectedProvince ? `${selectedProvince} / 省内城市` : '中国 · 全国视角' }}</span><span class="view-tag">{{ selected ? 'CITY' : selectedProvince ? 'PROVINCE' : '3D' }}</span></div>
     <div ref="labelLayer" class="city-labels" aria-label="地图城市">
-      <button v-for="city in cities" :key="city.name" :data-city="city.name" class="city-pin" :class="{ 'is-selected': selected === city.name }" :aria-label="`聚焦${city.name}`" :aria-pressed="selected === city.name" hidden @click.stop="selectCity(city.name)">{{ city.name }}</button>
+      <button v-for="city in visibleCities" :key="city.name" :data-city="city.name" class="city-pin" :class="{ 'is-selected': selected === city.name }" :aria-label="`聚焦${city.name}`" :aria-pressed="selected === city.name" hidden @click.stop="selectCity(city.name)">{{ city.name }}</button>
+      <button v-for="province in provincePins" :key="province.name" :data-province="province.name" class="province-pin" :class="{ 'is-selected': selectedProvince === province.name }" :aria-label="`查看${province.name}数据`" hidden @click.stop="selectProvince(province.name)">{{ province.label }}</button>
     </div>
     <div class="geography-labels" aria-hidden="true"><span v-for="place in geographyLabels" :key="place.name" class="geography-label" hidden>{{ place.name }}</span></div>
     <div class="terrain-source"><span>{{ terrainStatus }}</span><a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noreferrer">Mapzen · USGS / NOAA</a></div>
@@ -583,7 +682,10 @@ onUnmounted(() => {
 .view-tag { color:#7c8586; font:9px var(--mono); border:1px solid #c3c9c7; border-radius:4px; padding:2px 5px; }
 .city-labels,.geography-labels { position:absolute; inset:0; pointer-events:none; z-index:2; }
 .city-pin { position:absolute; top:0; left:0; padding:5px 7px; border:1px solid #bec7c073; border-radius:4px; pointer-events:auto; color:#46535b; font-size:10px; line-height:1; white-space:nowrap; background:#ffffffa8; cursor:pointer; transition:background 160ms ease; box-shadow:0 2px 5px #28352e08; }
-.city-pin[hidden],.geography-label[hidden] { display:none; }
+.province-pin { position:absolute; top:0; left:0; padding:2px 4px; border:1px solid #9baaa0; border-radius:3px; pointer-events:auto; color:#3d5147; font-size:9px; line-height:1; white-space:nowrap; background:#f8faf5e6; cursor:pointer; transition:background 160ms ease,color 160ms ease; box-shadow:0 1px 3px #28352e12; }
+.province-pin[hidden],.city-pin[hidden],.geography-label[hidden] { display:none; }
+.province-pin:hover,.province-pin:focus-visible { color:#fff; background:#4d655d; border-color:#4d655d; outline:none; }
+.province-pin.is-selected { color:#fff; background:#4d655d; border-color:#4d655d; }
 .city-pin.is-selected { color:#fff; background:#4d655d; border-color:#4d655d; padding:8px 12px; font-size:13px; }
 .city-pin:hover,.city-pin:focus-visible { background:#e0e6e2; color:#263b32; outline:1px solid #77968b; }
 .scene-tools { position:absolute; right:20px; top:22px; display:flex; flex-direction:column; border:1px solid #cbd1cd; background:#fbfcfae8; border-radius:9px; padding:4px; z-index:3; box-shadow:0 3px 12px #00000005; }

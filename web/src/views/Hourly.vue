@@ -11,7 +11,7 @@ import { useAsync } from '@/lib/useAsync'
 import { api } from '@/api/client'
 import { fmtBytes, hourLabel, splitBytes } from '@/lib/format'
 import { axisLabel, C, gridBase, splitLine, tooltipBase } from '@/lib/chart'
-import { dotHeatOption, handWobble, type HeatAnim } from '@/lib/chartTemplates'
+import { dotHeatOption, type HeatAnim } from '@/lib/chartTemplates'
 import { ChartSweep } from '@/lib/chartSweep'
 import { downloadFile, toCsv, toast, ui } from '@/stores/ui'
 
@@ -96,19 +96,9 @@ const pickerStrokeStyle = computed(() => ({
   opacity: String(anim.ink * anim.selected),
   strokeDashoffset: String(1 - anim.draw),
 }))
-// 日期按钮的手绘炭笔笔触：双路径叠出铅笔质感，确定性抖动保证形状稳定
-function handStrokePath(width: number, baseY: number, seed: number, amp = 1.1) {
-  const n = 14
-  let d = ''
-  for (let i = 0; i <= n; i++) {
-    const x = (width * i) / n
-    const y = baseY + handWobble(i * 1.31, seed) * amp
-    d += `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)} `
-  }
-  return d.trim()
-}
-const pickerStrokeGhost = handStrokePath(94, 7.6, 8.4, 1.5)
-const pickerStrokeMain = handStrokePath(94, 5.4, 3.7, 1.5)
+// 选中日期的下划线改为规整直线，不再使用手绘抖动笔触
+const pickerStrokeGhost = 'M0 7.6 L94 7.6'
+const pickerStrokeMain = 'M0 5.4 L94 5.4'
 // 实时读取系统偏好：运行中切换「减少动态效果」也能生效
 function prefersReducedMotion() {
   return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -182,10 +172,30 @@ watch(ringTarget, target => {
   tweenAnim(target)
 }, { immediate: true })
 const heatOption = computed(() => {
-  const option = dotHeatOption(displayValues.value, hours, dayLabels.value, value => heatMode.value === 'abs' ? fmtBytes(value) : `${value.toFixed(2)}%`, { ...anim })
+  const option = dotHeatOption(displayValues.value, hours, dayLabels.value, value => heatMode.value === 'abs' ? fmtBytes(value) : `${value.toFixed(2)}%`, { ...anim }, heatAccent.value)
   option.grid = { left: 18, right: 18, top: 10, bottom: 30 }
   option.yAxis.axisLabel = { show: false }
   return option
+})
+
+// 选中某天时只标注全局最高/最低，且始终以“绝对值”口径计算。
+// 这样切换“绝对值 / 占当天”时，红/绿标注的位置不会变化。
+const heatAccent = computed(() => {
+  const day = selected.value
+  if (!day) return null
+  const values = day.values
+  const displayKey = (value: number) => fmtBytes(value)
+  const peakKey = displayKey(Math.max(...values))
+  const valleyKey = displayKey(Math.min(...values))
+  if (peakKey === valleyKey) return { day: day.index, peakHours: [], valleyHours: [] }
+  const peakHours: number[] = []
+  const valleyHours: number[] = []
+  values.forEach((value, hour) => {
+    const key = displayKey(value)
+    if (key === peakKey) peakHours.push(hour)
+    if (key === valleyKey) valleyHours.push(hour)
+  })
+  return { day: day.index, peakHours, valleyHours }
 })
 
 function chooseDay(index: number) {
@@ -288,7 +298,7 @@ onUnmounted(() => {
           </nav>
           <BaseChart :option="heatOption" :loading="heat.loading.value && !heat.data.value" height="360px" :replace-merge="['series', 'visualMap']" @chart-click="onHeatClick" />
         </div>
-        <div class="heat-footer"><span class="heat-help"><Icon name="calendar" :size="13" />选择左侧日期，展开当天统计与图表</span><span>{{ heatMode === 'abs' ? '点面积表示流量' : '每行合计 100%' }} · 圆环自动标注峰值时段</span></div>
+        <div class="heat-footer"><span class="heat-help"><Icon name="calendar" :size="13" />选择左侧日期，展开当天统计与图表</span><span class="heat-meta"><span v-if="selected" class="heat-accent"><i class="is-peak" />峰值<i class="is-valley" />谷值</span>{{ heatMode === 'abs' ? '点面积表示流量' : '每行合计 100%' }}</span></div>
       </Panel>
 
       <section v-if="selected" class="day-details" aria-label="选中日期的详细分析" :data-date="selected.date.format('YYYY-MM-DD')">
@@ -345,8 +355,8 @@ onUnmounted(() => {
 .day-picker-stroke path {
   fill: none;
   stroke: var(--text);
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
   vector-effect: non-scaling-stroke;
 }
 .day-picker-stroke__ink { stroke-width: 2.2; opacity: .88; }
@@ -367,6 +377,11 @@ onUnmounted(() => {
 }
 .heat-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px 24px; margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--text-3); font-size: 12px; }
 .heat-help { display: inline-flex; align-items: center; gap: 7px; color: var(--text-2); }
+.heat-meta { display: inline-flex; align-items: center; gap: 8px; }
+.heat-accent { display: inline-flex; align-items: center; gap: 5px; margin-right: 4px; }
+.heat-accent i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.heat-accent .is-peak { background: #dc2f2f; }
+.heat-accent .is-valley { background: #0e9f6e; margin-left: 5px; }
 .day-detail-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 8px; }
 .detail-kicker { font-size: 12px; color: var(--text-3); }
 .day-detail-heading h2 { font-size: 22px; font-weight: 600; letter-spacing: -.02em; margin-top: 5px; }

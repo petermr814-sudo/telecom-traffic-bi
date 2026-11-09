@@ -112,7 +112,7 @@ function togglePlay() {
   playing.value = !playing.value
   if (playing.value) {
     startTimer()
-    toast('info', '实时流已恢复', '每 2 秒推送一批聚合指标')
+    toast('info', '实时流已恢复', `每 ${intervalSec.value} 秒推送一批聚合指标`)
   } else {
     stopTimer()
     toast('info', '实时流已暂停', '图表保持最后一帧')
@@ -158,6 +158,22 @@ function onFsChange() {
 }
 
 const partitionShare = (rate: number) => rate / Math.max(1, partitions.value.reduce((sum, item) => sum + item.rate, 0)) * 100
+
+const intervalSec = computed(() => 2 / speed.value)
+
+async function openAlerts() {
+  // 原生全屏只渲染全屏元素；告警弹层 Teleport 到 body，会落在全屏元素之外。
+  // 先退出全屏，再打开告警，保证全屏状态下也能看到。
+  if (document.fullscreenElement) {
+    try {
+      await document.exitFullscreen()
+    } catch {
+      /* ignore */
+    }
+    immersive.value = false
+  }
+  ui.alertsOpen = true
+}
 
 const chartOption = computed<import('echarts').EChartsOption>(() => ({
   animation: true,
@@ -251,7 +267,7 @@ const totalMsg = computed(() => msgRate.value.toFixed(1))
         <span class="live"><span class="live-dot" />LIVE</span>
         <div>
           <h2>实时流量监控</h2>
-          <p>每 2 秒更新 · {{ clock }}</p>
+          <p>每 {{ intervalSec }} 秒更新 · {{ clock }}</p>
         </div>
       </div>
       <div class="rt-actions">
@@ -295,7 +311,7 @@ const totalMsg = computed(() => msgRate.value.toFixed(1))
 
     <div class="rt-section"><h3>实时速率与告警</h3><span>观察当前网络是否稳定</span></div>
     <div class="rt-grid">
-      <Panel data-template="G17" title="实时下行速率" sub="每 2 秒聚合一次 · 近 2 分钟">
+      <Panel data-template="G17" title="实时下行速率" :sub="`每 ${intervalSec} 秒聚合一次 · 近 2 分钟`">
         <template #actions>
           <span class="rt-legend"><i />Gbps</span>
         </template>
@@ -312,7 +328,7 @@ const totalMsg = computed(() => msgRate.value.toFixed(1))
             </div>
           </li>
         </ul>
-        <button class="btn btn--sm rt-all" @click="ui.alertsOpen = true">打开告警中心</button>
+        <button class="btn btn--sm rt-all" @click="openAlerts">打开告警中心</button>
       </Panel>
     </div>
 

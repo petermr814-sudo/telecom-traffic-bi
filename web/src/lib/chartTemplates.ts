@@ -133,7 +133,9 @@ function handRingPoints(cx: number, cy: number, r: number, seed: number, amp = 1
   return { points, length: pathLength(points, true) }
 }
 
-export function dotHeatOption(values: number[][], hours: string[], days: string[], format: (value: number) => string, anim: HeatAnim) {
+export interface HeatAccent { day: number; peakHours: number[]; valleyHours: number[] }
+
+export function dotHeatOption(values: number[][], hours: string[], days: string[], format: (value: number) => string, anim: HeatAnim, accent?: HeatAccent | null) {
   const max = Math.max(1, ...values.map(point => point[2]))
   const lastH = hours.length - 1
   const lastD = days.length - 1
@@ -157,20 +159,21 @@ export function dotHeatOption(values: number[][], hours: string[], days: string[
         const maxR = Math.min(width * .38, height * .36)
         const radius = maxR * Math.sqrt(value / max)
         const opacity = 1 - .55 * anim.ink * anim.selected * Math.min(1, Math.abs(d - anim.maskRow))
+        const isPeak = Boolean(accent && d === accent.day && accent.peakHours.includes(h))
+        const isValley = Boolean(accent && d === accent.day && accent.valleyHours.includes(h))
+        const fill = value > 0 ? (isPeak ? C.red : isValley ? C.teal : api.visual('color')) : '#dce3ec'
         // 子元素结构逐帧保持不变（普通格 [circle]，锚点格 [circle, polyline, polyline, polygon]）：
         // ECharts 按下标复用元素，结构缺项导致类型错位时 copyElement 会把旧形状并进新元素
         const children: any[] = [
-          { type: 'circle', shape: { cx: x, cy: y, r: value > 0 ? radius : 1 }, style: { fill: value > 0 ? api.visual('color') : '#dce3ec', opacity } },
+          { type: 'circle', shape: { cx: x, cy: y, r: value > 0 ? radius : 1 }, style: { fill, opacity } },
         ]
         if (params.dataIndex === ringAnchor) {
-          // 手绘炭笔下划线与峰值画圈：dash 偏移按 draw 进度划出，两段共用同一进度即同步绘制
+          // 下划线改为直线；峰值不再画圈，改用红色点表示
           const baseY = heatBandY(api, anim.maskRow, lastD) + height / 2 - 1
           const x0 = params.coordSys.x + 2
           const x1 = params.coordSys.x + params.coordSys.width - 2
-          const ghost = handLinePoints(x0, x1, baseY + 1.9, 8.4)
-          const main = handLinePoints(x0, x1, baseY, 3.7)
-          const [ringX, ringY] = heatBandXY(api, anim.ringH, anim.ringD, lastH, lastD)
-          const ring = handRingPoints(ringX, ringY, maxR * anim.ringVF + 2.5, 5.2)
+          const ghost: HandPath = { points: [[x0, baseY + 1.9], [x1, baseY + 1.9]], length: Math.max(1, x1 - x0) }
+          const main: HandPath = { points: [[x0, baseY], [x1, baseY]], length: Math.max(1, x1 - x0) }
           const strokeOf = (path: HandPath, lineWidth: number, alpha: number, gated = true) => ({
             stroke: C.text, lineWidth, fill: 'none', lineCap: 'round', lineJoin: 'round',
             opacity: alpha * anim.ink * (gated ? anim.selected : 1),
@@ -179,8 +182,6 @@ export function dotHeatOption(values: number[][], hours: string[], days: string[
           children.push(
             { type: 'polyline', shape: { points: ghost.points, smooth: 0 }, style: strokeOf(ghost, 1.1, .3) },
             { type: 'polyline', shape: { points: main.points, smooth: 0 }, style: strokeOf(main, 2.2, .88) },
-            // 圆环不随选中门控：未选中日期时也标注全周峰值
-            { type: 'polygon', shape: { points: ring.points }, style: { ...strokeOf(ring, 1.35, .85, false), fill: 'transparent' } },
           )
         }
         return { type: 'group', children }

@@ -7,9 +7,10 @@ import Icon from './Icon.vue'
 import Panel from './Panel.vue'
 import Select from './Select.vue'
 import { api } from '@/api/client'
-import type { ProvinceRow } from '@/api/types'
+import type { CellRow, ProvinceRow } from '@/api/types'
+import cityCatalog from '@/data/cities-all.json'
 import { useAsync } from '@/lib/useAsync'
-import { aggregateCities, cityMetric, type MapMetric } from '@/lib/cityTraffic'
+import { aggregateCities, cityMetric, type CityTraffic, type MapMetric } from '@/lib/cityTraffic'
 import { animateTexts, replayTextReveal, type TextAnim } from '@/lib/textReveal'
 import { fmtBytes, fmtCount, fmtDelta } from '@/lib/format'
 import { axisLabel, tooltipBase } from '@/lib/chart'
@@ -18,8 +19,86 @@ import { ui } from '@/stores/ui'
 const props = defineProps<{ provinces: ProvinceRow[] }>()
 const metric = ref<MapMetric>('traffic')
 const selected = ref<string | null>(null)
+const selectedProvince = ref('')
+const showProvinceBoundaries = ref(true)
 const query = ref('')
 const moving = ref(false)
+
+type CatalogCity = { name: string; province: string; region: string }
+const catalog = cityCatalog as CatalogCity[]
+
+function hash01(value: string) {
+  let hash = 2166136261
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0) / 4294967295
+}
+
+// 60 个城市有真实模拟小区；其余地级市用省内剩余量按稳定权重拆分，保证下拉与数据完整。
+function withCatalogCities(real: CityTraffic[], provinces: ProvinceRow[]): CityTraffic[] {
+  const realKeys = new Set(real.map(city => `${city.province}/${city.name}`))
+  const groups = new Map<string, CatalogCity[]>()
+  for (const entry of catalog) {
+    const list = groups.get(entry.province) ?? []
+    list.push(entry)
+    groups.set(entry.province, list)
+  }
+  const out = [...real]
+  for (const [province, entries] of groups) {
+    const row = provinces.find(p => p.province === province)
+    if (!row) continue
+    const existing = real.filter(city => city.province === province)
+    const missing = entries.filter(entry => !realKeys.has(`${province}/${entry.name}`))
+    if (!missing.length) continue
+    // 城市数据口径是「重点小区」而非全省总量：缺失城市以该省已监测城市的均值为基准，
+    // 不应把省份剩余流量全部摊给这些城市，否则合成城市会反超真实城市。
+    const baseTraffic = existing.length ? existing.reduce((sum, city) => sum + city.traffic, 0) / existing.length : row.trafficBytes / Math.max(1, entries.length)
+    const baseUsers = existing.length ? existing.reduce((sum, city) => sum + city.users, 0) / existing.length : row.users / Math.max(1, entries.length)
+    missing.forEach((entry, index) => {
+      const traffic = Math.max(1, baseTraffic * (.7 + hash01(`${entry.name}/traffic`) * .8))
+      const users = Math.max(1, Math.round(baseUsers * (.7 + hash01(`${entry.name}/users`) * .8)))
+      const util = 46 + hash01(`${entry.name}/util`) * 30
+      const trend = Array.from({ length: 7 }, (_, day) => Math.min(99, Math.max(1, util + Math.sin(day * 1.7 + index) * 5 - 2)))
+      const cell: CellRow = {
+        id: `SYN-${province}-${entry.name}`,
+        name: `${entry.name}重点小区`,
+        city: entry.name,
+        province,
+        region: row.region,
+        type: '5G宏站',
+        generation: '5G',
+        bandwidthMbps: 1000,
+        users,
+        baseUtil: Number(util.toFixed(1)),
+        utilization: { today: Number(util.toFixed(1)), '7d': Number((util - 2).toFixed(1)), '30d': Number((util - 3).toFixed(1)) },
+        trend,
+        trafficBytes: traffic,
+        busyMbps: Number((10 * util).toFixed(1)),
+        util: Number(util.toFixed(1)),
+        traffic,
+        status: util >= 85 ? '预警' : '正常',
+        headroomMbps: Math.max(0, Math.round(1000 * (1 - util / 100)))
+      }
+      out.push({
+        name: entry.name,
+        province,
+        region: row.region,
+        traffic,
+        users,
+        perUser: traffic / users,
+        utilization: util,
+        fiveGShare: 58 + hash01(`${entry.name}/5g`) * 18,
+        congested: 0,
+        warning: util >= 85 ? 1 : 0,
+        trend,
+        cells: [cell]
+      })
+    })
+  }
+  return out
+}
 const metrics: { key: MapMetric; label: string }[] = [{ key: 'traffic', label: '流量' }, { key: 'users', label: '用户' }, { key: 'perUser', label: '人均' }, { key: 'growth', label: '增速' }]
 const metricsGroup = ref<HTMLElement | null>(null)
 const cityPanel = ref<HTMLElement | null>(null)
@@ -103,8 +182,23 @@ onUnmounted(() => {
 const rangeLabel = computed(() => ui.range === 'today' ? '今日' : ui.range === '7d' ? '近 7 天' : '近 30 天')
 const { data, error, loading, run } = useAsync(() => api.cells(ui.range, 'all', ui.settings.warn, ui.settings.congest), () => [ui.range, ui.tick, ui.settings.warn, ui.settings.congest])
 const { data: meta } = useAsync(() => api.meta())
-const allCities = computed(() => aggregateCities(data.value?.rows ?? []))
-const cities = computed(() => allCities.value.filter(c => ui.region === 'all' || c.region === ui.region))
+const realCities = computed(() => aggregateCities(data.value?.rows ?? []))
+const allCities = computed(() => withCatalogCities(realCities.value, props.provinces))
+const cities = computed(() => {
+  if (selectedProvince.value) return allCities.value.filter(c => c.province === selectedProvince.value)
+  return ui.region === 'all' ? allCities.value : allCities.value.filter(c => c.region === ui.region)
+})
+const provinceOptions = computed(() => [
+  { value: '', label: '全国 / 全部省份' },
+  ...props.provinces.map(p => ({ value: p.province, label: p.province }))
+])
+const provinceRow = computed(() => props.provinces.find(p => p.province === selectedProvince.value) ?? null)
+const provinceRank = computed(() => {
+  if (!provinceRow.value) return 0
+  const sorted = [...props.provinces].sort((a, b) => b.trafficBytes - a.trafficBytes)
+  return sorted.findIndex(p => p.province === provinceRow.value?.province) + 1
+})
+const provinceRanked = computed(() => [...props.provinces].sort((a, b) => b.trafficBytes - a.trafficBytes))
 const selectedCity = computed(() => cities.value.find(c => c.name === selected.value) ?? null)
 watch(() => [selectedCity.value?.name, ui.range], async (_, __, onCleanup) => {
   // Restore the previous text before Vue patches it; rapid city changes cannot
@@ -117,10 +211,14 @@ watch(() => [selectedCity.value?.name, ui.range], async (_, __, onCleanup) => {
   analysisTexts = [...analysis.value.querySelectorAll<HTMLElement>('.analysis-heading, .panel-head, .donut-center, .network-legend')]
     .map(root => animateTexts(root, { deep: true, charStep: 6, charBlur: 100, maxDelay: 140 }))
 })
-const ranked = computed(() => [...cities.value].sort((a, b) => cityMetric(b, metric.value, props.provinces) - cityMetric(a, metric.value, props.provinces)))
+const ranked = computed(() => {
+  const scoped = selectedProvince.value ? cities.value.filter(c => c.province === selectedProvince.value) : cities.value
+  return [...scoped].sort((a, b) => cityMetric(b, metric.value, props.provinces) - cityMetric(a, metric.value, props.provinces))
+})
 const cityOptions = computed(() => ranked.value.map((c) => ({ value: c.name, label: `${c.name} · ${c.province}` })))
 const filtered = computed(() => ranked.value.filter(c => `${c.name}${c.province}${c.region}`.includes(query.value.trim())))
-const activeCells = computed(() => selectedCity.value?.cells ?? cities.value.flatMap(c => c.cells))
+const activeCities = computed(() => selectedProvince.value ? cities.value.filter(c => c.province === selectedProvince.value) : cities.value)
+const activeCells = computed(() => selectedCity.value?.cells ?? (selectedProvince.value ? activeCities.value.flatMap(c => c.cells) : realCities.value.flatMap(c => c.cells)))
 const totalTraffic = computed(() => activeCells.value.reduce((sum, c) => sum + c.traffic, 0))
 const rankingMax = computed(() => Math.max(...ranked.value.map(c => Math.abs(cityMetric(c, metric.value, props.provinces))), 1))
 const dailyLabels = computed(() => Array.from({ length: 7 }, (_, i) => meta.value?.dateEnd ? dayjs(meta.value.dateEnd).subtract(6 - i, 'day').format('MM-DD') : `第 ${i + 1} 天`))
@@ -130,8 +228,20 @@ function valueText(city: typeof cities.value[number]) {
   const value = cityMetric(city, metric.value, props.provinces)
   return metric.value === 'users' ? fmtCount(value) : metric.value === 'growth' ? fmtDelta(value) : fmtBytes(value, 1)
 }
-function selectCity(name: string) { selected.value = name }
-function reset() { selected.value = null }
+function selectCity(name: string) {
+  const city = cities.value.find(c => c.name === name)
+  if (city) selectedProvince.value = city.province
+  selected.value = name
+}
+function setProvince(name: string | number) {
+  selectedProvince.value = String(name)
+  selected.value = null
+  query.value = ''
+}
+function reset() {
+  selected.value = null
+  selectedProvince.value = ''
+}
 watch(cities, value => { if (selected.value && !value.some(c => c.name === selected.value)) reset() })
 
 const trendOption = computed(() => {
@@ -172,16 +282,18 @@ const regionRows = computed(() => {
       <header class="atlas-header">
         <div class="atlas-title"><span class="atlas-icon"><Icon name="layers" :size="21" /></span><div><div class="eyebrow">TERRAIN ATLAS <span>/ 01</span></div><h2>全国流量地图</h2></div><span class="atlas-badge">地理白模</span></div>
         <div ref="metricsGroup" class="map-metrics" role="group" aria-label="地图指标"><span class="metrics-mask" aria-hidden="true" :style="{ left: `${metricsMask.left}px`, width: `${metricsMask.width}px` }" /><button v-for="m in metrics" :key="m.key" :data-key="m.key" :class="{ active: metric === m.key }" :aria-pressed="metric === m.key" @click="metric = m.key">{{ m.label }}</button></div>
+        <button class="boundary-toggle" :class="{ active: showProvinceBoundaries }" :aria-pressed="showProvinceBoundaries" title="显示 / 隐藏省界" @click="showProvinceBoundaries = !showProvinceBoundaries"><span class="boundary-dot" />省界</button>
       </header>
       <div v-if="error && data" class="refresh-error" role="alert">城市数据刷新失败，当前显示上次结果。<button @click="run">重试</button></div>
       <div class="atlas-body">
         <div class="map-column">
-          <TrafficMap3D :cities="cities" :provinces="provinces" :metric="metric" :selected="selected" @select="selectCity" @reset="reset" @moving="moving = $event" />
+          <TrafficMap3D :cities="cities" :provinces="provinces" :metric="metric" :selected="selected" :selected-province="selectedProvince" :show-province-boundaries="showProvinceBoundaries" @select="selectCity" @reset="reset" @province-select="setProvince" @moving="moving = $event" />
           <div class="map-scale"><span>{{ caption }}</span><span class="scale-key">DEM 地形</span></div>
         </div>
         <aside ref="cityPanel" class="city-panel" aria-label="城市数据">
           <template v-if="selectedCity">
-            <button class="back-button" @click="reset"><Icon name="chevron-left" :size="13" />返回全国概览</button>
+            <button class="back-button" @click="selected = null"><Icon name="chevron-left" :size="13" />返回{{ selectedProvince || '全国' }}城市列表</button>
+            <button v-if="selectedProvince" class="back-button back-button--plain" @click="reset">返回全国</button>
             <div class="city-heading"><div><p>{{ selectedCity.region }} · {{ selectedCity.province }}</p><h3>{{ selectedCity.name }}<span>城市洞察</span></h3></div><span class="city-target"><Icon name="target" :size="22" /></span></div>
             <div class="city-total"><span>{{ rangeLabel }}重点小区流量</span><strong class="num">{{ fmtBytes(selectedCity.traffic, 1) }}</strong><p>覆盖 {{ selectedCity.cells.length }} 个重点小区</p></div>
             <div class="city-kpis">
@@ -193,15 +305,33 @@ const regionRows = computed(() => {
             <p class="panel-footnote"><Icon name="info" :size="12" />下方图表随城市与时间范围联动</p>
           </template>
           <template v-else>
-            <div class="overview-heading"><div><div class="eyebrow">CITY EXPLORER</div><h3>从全国，深入一座城</h3></div><span>{{ cities.length }}<small> 城市</small></span></div>
-            <p class="overview-desc">选择城市，让数据与空间一起聚焦。</p>
-            <div class="city-search"><Icon name="search" :size="15" /><input v-model="query" v-type-reveal aria-label="搜索地图城市" placeholder="搜索城市、省份或大区" /><button v-if="query" aria-label="清空城市搜索" @click="query = ''"><Icon name="close" :size="13" /></button></div>
-            <div class="ranking-caption"><span v-text-reveal>{{ query ? `找到 ${filtered.length} 座城市` : '重点城市排名' }}</span><span v-text-reveal>{{ metric === 'growth' ? '所在省同比' : `${rangeLabel}${metrics.find(m => m.key === metric)?.label}` }}</span></div>
-            <div v-if="error" class="city-empty" role="alert">城市数据加载失败<button @click="run">重新加载</button></div>
-            <div v-else-if="loading && !data" class="city-empty" role="status">正在读取城市数据…</div>
-            <div v-else class="city-ranking">
-              <button v-for="(city, i) in filtered" :key="city.name" class="city-row" :data-city="city.name" :aria-label="`查看${city.name}城市详情`" @click="selectCity(city.name)"><span v-text-reveal class="rank-no">{{ String(i + 1).padStart(2, '0') }}</span><span v-text-reveal class="rank-city">{{ city.name }}<i :style="{ width: `${Math.max(3, Math.abs(cityMetric(city, metric, provinces)) / rankingMax * 100)}%` }" /></span><span v-text-reveal class="rank-value num">{{ valueText(city) }}</span><Icon name="chevron-right" :size="12" /></button>
-              <p v-if="!filtered.length" class="city-empty">暂无匹配城市，试试其他名称。</p>
+            <div class="overview-heading"><div><div class="eyebrow">CITY EXPLORER</div><h3>{{ selectedProvince ? '省内城市' : '先选省份，再看城市' }}</h3></div><span>{{ selectedProvince ? filtered.length : provinces.length }}<small> {{ selectedProvince ? '城市' : '省份' }}</small></span></div>
+            <p class="overview-desc">{{ selectedProvince ? `${selectedProvince} · 点击城市进入城市洞察` : '默认展示全国省份；选择省份后，地图和右侧都进入该省。' }}</p>
+            <div class="province-picker">
+              <span class="province-picker__label">省份</span>
+              <Select :model-value="selectedProvince" :options="provinceOptions" aria-label="选择省份" @update:model-value="setProvince" />
+            </div>
+            <div v-if="provinceRow" class="province-summary">
+              <div class="province-summary__head"><strong>{{ provinceRow.province }}</strong><span>{{ provinceRow.region }} · 流量排名 {{ provinceRank }}</span></div>
+              <div class="province-summary__grid">
+                <div><span>流量</span><strong class="num">{{ fmtBytes(provinceRow.trafficBytes, 1) }}</strong></div>
+                <div><span>用户</span><strong class="num">{{ fmtCount(provinceRow.users) }}</strong></div>
+                <div><span>人均</span><strong class="num">{{ fmtBytes(provinceRow.perUserBytes, 1) }}</strong></div>
+                <div><span>同比</span><strong class="num" :class="provinceRow.growth >= 0 ? 'is-up' : 'is-down'">{{ fmtDelta(provinceRow.growth) }}</strong></div>
+              </div>
+            </div>
+            <template v-if="selectedProvince">
+              <div class="city-search"><Icon name="search" :size="15" /><input v-model="query" v-type-reveal aria-label="搜索地图城市" :placeholder="`在 ${selectedProvince} 内搜索城市`" /><button v-if="query" aria-label="清空城市搜索" @click="query = ''"><Icon name="close" :size="13" /></button></div>
+              <div class="ranking-caption"><span v-text-reveal>{{ query ? `找到 ${filtered.length} 座城市` : `${selectedProvince} · 城市排名` }}</span><span v-text-reveal>{{ metric === 'growth' ? '所在省同比' : `${rangeLabel}${metrics.find(m => m.key === metric)?.label}` }}</span></div>
+              <div v-if="error" class="city-empty" role="alert">城市数据加载失败<button @click="run">重新加载</button></div>
+              <div v-else-if="loading && !data" class="city-empty" role="status">正在读取城市数据…</div>
+              <div v-else class="city-ranking">
+                <button v-for="(city, i) in filtered" :key="city.name" class="city-row" :data-city="city.name" :aria-label="`查看${city.name}城市详情`" @click="selectCity(city.name)"><span v-text-reveal class="rank-no">{{ String(i + 1).padStart(2, '0') }}</span><span v-text-reveal class="rank-city">{{ city.name }}<i :style="{ width: `${Math.max(3, Math.abs(cityMetric(city, metric, provinces)) / rankingMax * 100)}%` }" /></span><span v-text-reveal class="rank-value num">{{ valueText(city) }}</span><Icon name="chevron-right" :size="12" /></button>
+                <p v-if="!filtered.length" class="city-empty">暂无匹配城市，试试其他名称。</p>
+              </div>
+            </template>
+            <div v-else class="province-ranking">
+              <button v-for="(p, i) in provinceRanked" :key="p.province" class="city-row" :aria-label="`查看${p.province}城市列表`" @click="setProvince(p.province)"><span v-text-reveal class="rank-no">{{ String(i + 1).padStart(2, '0') }}</span><span v-text-reveal class="rank-city">{{ p.province }}<i :style="{ width: `${Math.max(3, p.trafficBytes / (provinceRanked[0]?.trafficBytes || 1) * 100)}%` }" /></span><span v-text-reveal class="rank-value num">{{ fmtBytes(p.trafficBytes, 1) }}</span><Icon name="chevron-right" :size="12" /></button>
             </div>
             <p class="panel-footnote"><span class="small-dot" />{{ activeCells.length }} 个重点小区 · {{ fmtBytes(totalTraffic, 1) }}<span v-if="api.mode !== 'api'"> · 模拟数据</span></p>
           </template>
@@ -240,6 +370,22 @@ const regionRows = computed(() => {
 .map-metrics button { position: relative; z-index: 1; color: #78867b; font-size: 11px; padding: 6px 14px; border-radius: 5px; transition: color 150ms ease, transform 150ms ease; }
 .map-metrics button.active { color: #3b5745; }
 .map-metrics button:active { transform: scale(.97); }
+.boundary-toggle { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; padding: 6px 10px; border: 1px solid #d5ddd2; border-radius: 6px; background: #f7f9f5; color: #829080; font-size: 10px; transition: all .18s ease; }
+.boundary-toggle:hover { border-color: #b7c5b1; color: #506c44; }
+.boundary-toggle.active { color: #3b5745; border-color: #b7c5b1; background: #edf2e8; }
+.boundary-dot { width: 11px; height: 2px; background: currentColor; box-shadow: 0 -3px 0 currentColor, 0 3px 0 currentColor; opacity: .7; }
+.province-picker { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.province-picker__label { font-size: 10px; color: #8c978b; white-space: nowrap; }
+.province-picker :deep(.sel) { flex: 1; min-width: 0; }
+.province-summary { margin-top: 10px; padding: 10px 11px; border: 1px solid #e2e8dc; border-radius: 8px; background: #f5f8f1; }
+.province-summary__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 10px; color: #8c978b; }
+.province-summary__head strong { color: #3b5745; font-size: 13px; font-weight: 550; }
+.province-summary__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 12px; margin-top: 8px; }
+.province-summary__grid div { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; font-size: 10px; color: #8c978b; }
+.province-summary__grid strong { color: #42523f; font-weight: 550; }
+.province-summary__grid .is-up { color: #2e7a6f; }
+.province-summary__grid .is-down { color: #b35c4a; }
+.back-button--plain { margin-left: 8px; padding-left: 8px; border-left: 1px solid #dfe5da; }
 .atlas-body { display: grid; grid-template-columns: minmax(0, 1fr) 304px; }
 .map-column { min-width: 0; }
 .map-scale { min-height: 43px; display: flex; justify-content: space-between; align-items: center; gap: 12px; color: #8a958a; padding: 10px 24px; font-size: 9px; border-top: 1px solid #e0e6dd; background: #f7f8f4; }
