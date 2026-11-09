@@ -27,7 +27,7 @@ defineEmits<{ (e: 'retry'): void }>()
       <div class="panel-actions"><slot name="actions" /></div>
     </header>
     <div class="panel-body" :class="{ 'is-flush': flush }" :aria-busy="loading">
-      <Transition name="skeleton-fade">
+      <Transition name="skeleton-fade" :duration="250">
         <div v-if="error" class="state">
           <Icon name="alert" :size="22" />
           <p>{{ error }}</p>

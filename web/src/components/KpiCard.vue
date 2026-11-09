@@ -24,7 +24,7 @@ const good = computed(() => props.delta === undefined || props.delta === 0 ? nul
 <template>
   <article class="kpi" :aria-busy="loading">
     <div class="kpi-head"><span class="kpi-label">{{ label }}</span><Icon :name="icon" :size="18" /></div>
-    <div class="kpi-value"><Transition name="skeleton-fade"><SkeletonLoader v-if="loading" variant="line" compact /><span v-else class="kpi-value-fill"><span v-text-reveal="!loading" class="num">{{ value }}</span><span v-if="unit" class="kpi-unit">{{ unit }}</span></span></Transition></div>
+    <div class="kpi-value"><Transition name="skeleton-fade" :duration="250"><SkeletonLoader v-if="loading" variant="line" compact /><span v-else class="kpi-value-fill"><span v-text-reveal="!loading" class="num">{{ value }}</span><span v-if="unit" class="kpi-unit">{{ unit }}</span></span></Transition></div>
     <div class="kpi-foot">
       <span v-if="delta !== undefined" class="delta" :class="good === null ? 'delta--flat' : good ? 'delta--up' : 'delta--down'">
         <Icon :name="delta >= 0 ? 'arrow-up' : 'arrow-down'" :size="12" />{{ fmtDelta(Math.abs(delta)) }}
