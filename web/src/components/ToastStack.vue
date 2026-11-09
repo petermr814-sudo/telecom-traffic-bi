@@ -39,16 +39,9 @@ const icons: Record<Toast['type'], string> = {
   z-index: 200;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
   width: min(380px, calc(100vw - 32px));
-  max-height: calc(100vh - 24px);
-  overflow-y: auto;
   pointer-events: none;
-  scrollbar-width: none;
-}
-
-.toast-stack::-webkit-scrollbar {
-  display: none;
 }
 
 .toast {
@@ -59,7 +52,7 @@ const icons: Record<Toast['type'], string> = {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
-  box-shadow: var(--shadow-pop);
+  box-shadow: 0 1px 3px rgba(13, 22, 41, 0.08);
   pointer-events: auto;
 }
 
