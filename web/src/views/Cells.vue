@@ -187,10 +187,6 @@ function onScatterClick(p: any) {
   if (p?.data?.cell) openCell(p.data.cell)
 }
 
-function setStatus(s: typeof status.value) {
-  status.value = status.value === s ? 'all' : s
-}
-
 function exportCsv() {
   const header = ['小区编号', '小区名称', '大区', '省份', '城市', '制式', '带宽Mbps', '用户数', '流量(字节)', '忙时利用率%', '状态']
   const body = filtered.value.map((c) => [c.id, c.name, c.region, c.province, c.city, c.generation, c.bandwidthMbps, c.users, c.traffic, c.util, c.status])
@@ -234,26 +230,26 @@ onUnmounted(() => {
 
   <div v-else class="page">
     <section class="stats">
-      <button class="stat" :class="{ 'is-active': status === 'all' }" @click="status = 'all'">
+      <div class="stat">
         <span class="stat-icon blue"><Icon name="tower" :size="16" /></span>
         <div><span>重点小区</span><strong v-text-reveal="Boolean(data)" class="num">{{ data ? summary.total : '—' }}</strong></div>
         <span class="stat-sub">平均利用率 {{ summary.avgUtil.toFixed(1) }}%</span>
-      </button>
-      <button class="stat" :class="{ 'is-active': status === '预警' }" @click="setStatus('预警')">
+      </div>
+      <div class="stat">
         <span class="stat-icon amber"><Icon name="alert" :size="16" /></span>
         <div><span>预警小区</span><strong v-text-reveal="Boolean(data)" class="num">{{ data ? summary.warning : '—' }}</strong></div>
         <span class="stat-sub">利用率 ≥ {{ ui.settings.warn }}%</span>
-      </button>
-      <button class="stat" :class="{ 'is-active': status === '拥塞' }" @click="setStatus('拥塞')">
+      </div>
+      <div class="stat">
         <span class="stat-icon red"><Icon name="zap" :size="16" /></span>
         <div><span>拥塞小区</span><strong v-text-reveal="Boolean(data)" class="num">{{ data ? summary.congested : '—' }}</strong></div>
         <span class="stat-sub">利用率 ≥ {{ ui.settings.congest }}%</span>
-      </button>
-      <button class="stat" @click="expandOpen = true">
+      </div>
+      <div class="stat">
         <span class="stat-icon green"><Icon name="sparkles" :size="16" /></span>
         <div><span>可扩容</span><strong v-text-reveal="Boolean(data)" class="num">{{ data ? summary.expandable : '—' }}</strong></div>
-        <span class="stat-sub">生成扩容建议 →</span>
-      </button>
+        <span class="stat-sub">具备扩容条件</span>
+      </div>
     </section>
 
     <div class="section-heading"><h2>网络负载概况</h2><p>分布与用户规模共同判断扩容优先级</p></div>
@@ -393,12 +389,8 @@ onUnmounted(() => {
   text-align: left;
   box-shadow: none;
   filter: drop-shadow(0 6px 18px rgba(13, 22, 41, 0.05));
-  transition: border-color 0.16s ease, filter 0.16s ease, transform 0.16s ease;
   position: relative;
 }
-
-.stat:hover { border-color: var(--border-strong); filter: drop-shadow(0 14px 34px rgba(13, 22, 41, 0.12)); transform: translateY(-1px) scale(1.01); }
-.stat.is-active { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary) inset; }
 
 .stat-icon { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; flex-shrink: 0; }
 .stat-icon.blue { background: var(--primary-soft); color: var(--primary); }
@@ -480,7 +472,6 @@ onUnmounted(() => {
 .stats { gap: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .stat { border: 0; border-radius: 0; box-shadow: none; background: transparent; padding: 24px; min-height: 122px; }
 .stat + .stat { border-left: 1px solid var(--border); }
-.stat:hover { transform: none; box-shadow: none; }
 .stat-sub { font-size: 11px; }
 @media (max-width: 1180px) {
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -494,7 +485,6 @@ onUnmounted(() => {
 .stat-sub { position: static; grid-column: 2; }
 .stat > div strong { font-size: 28px; margin-top: 5px; }
 .stat > div span { font-size: 12px; }
-.stat.is-active { background: var(--primary-soft); box-shadow: inset 0 -3px 0 var(--primary); }
 /* 固定列宽与行高：模糊/逐字动画期间内容长度变化不再重算布局，避免抖动 */
 .cells-table :deep(table) { table-layout: fixed; min-width: 640px; }
 .cells-table :deep(tbody tr) { height: 60px; }

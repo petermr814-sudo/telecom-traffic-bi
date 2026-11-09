@@ -147,8 +147,8 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
         <template #actions>
           <button class="btn btn--sm" :disabled="busy" @click="runAll"><Icon name="play" :size="13" />重跑失败</button>
         </template>
-        <div class="table-wrap" v-swap-reveal>
-          <table class="table table--compact">
+        <div class="table-wrap">
+          <table class="table table--compact jobs-table">
             <thead>
               <tr>
                 <th>作业</th>
@@ -156,7 +156,7 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
                 <th>状态</th>
                 <th class="num">输入行数</th>
                 <th class="num">耗时</th>
-                <th class="w-70" />
+                <th class="job-actions" />
               </tr>
             </thead>
             <tbody>
@@ -167,15 +167,17 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
                 </td>
                 <td>{{ j.engine }}</td>
                 <td>
-                  <span class="chip" :class="j.status === '成功' ? 'chip--green' : j.status === '运行中' ? 'chip--blue' : 'chip--red'">
+                  <span class="chip job-status" :class="j.status === '成功' ? 'chip--green' : j.status === '运行中' ? 'chip--blue' : 'chip--red'">
                     {{ j.status }}
                   </span>
                 </td>
                 <td class="num">{{ fmtCount(j.rows) }}</td>
                 <td class="num">{{ j.duration }}</td>
-                <td>
-                  <button v-if="j.status === '失败'" class="btn btn--sm" @click.stop="runJob(j)">重跑</button>
-                  <Icon v-else name="chevron-right" :size="14" class="muted" />
+                <td class="job-actions">
+                  <div class="job-action-slot">
+                    <button v-if="j.status === '失败'" class="btn btn--sm" @click.stop="runJob(j)">重跑</button>
+                    <Icon v-else name="chevron-right" :size="14" class="muted" />
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -328,7 +330,10 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
 .job-name { font-size: 12px; font-weight: 500; color: var(--text); }
 .job-id { font-size: 9.5px; color: var(--text-3); margin-top: 1px; }
 .row-click { cursor: pointer; }
-.w-70 { width: 70px; }
+.jobs-table .job-status { min-width: 64px; justify-content: center; }
+.jobs-table th.job-actions,
+.jobs-table td.job-actions { width: 76px; padding-left: 8px; padding-right: 8px; }
+.job-action-slot { width: 60px; height: 28px; display: flex; align-items: center; justify-content: flex-end; }
 
 .endpoints { display: flex; flex-direction: column; gap: 1px; }
 .endpoints li { display: grid; grid-template-columns: 34px 210px minmax(0, 1fr); align-items: center; gap: 8px; padding: 5px 4px; border-bottom: 1px dashed var(--border); }

@@ -1,39 +1,84 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onBeforeUnmount, ref } from 'vue'
 import Icon from './Icon.vue'
 
 defineProps<{ title: string; sub?: string }>()
 
-// 展开/收起用明确 px 高度过渡（0fr 行高技巧在 auto 高度容器里解析为 max-content，
-// 收起方向值不变不触发过渡）。visibility 由 CSS transition-delay 在收起结束后置 hidden，
-// 保证收起态内容不可聚焦、对辅助技术隐藏。
+// 不依赖 <details> 的原生开合：原生 toggle 发生在内容隐藏之后，浏览器会冻结
+// 内部的高度/透明度过渡，导致收起没有动画、再次展开从错误高度开始。
+// 这里自己维护开合状态：动画期间保持 details open，结束后再同步 open 属性。
+const root = ref<HTMLDetailsElement>()
 const inner = ref<HTMLElement>()
-let settleTimer = 0
-function onToggle(event: Event) {
-  const next = (event.target as HTMLDetailsElement).open
-  window.clearTimeout(settleTimer)
+const open = ref(false)
+// 收起动画结束后再真正隐藏内容；details 关闭后浏览器会冻结内部过渡，
+// 单靠 CSS visibility 延迟会停留在 visible。
+const settled = ref(true)
+let animation: Animation | null = null
+
+function toggle() {
+  const details = root.value
   const el = inner.value
-  if (!el) return
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  if (!details || !el) return
+
+  const next = !open.value
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
+  const start = el.getBoundingClientRect().height
+
+  animation?.cancel()
+  animation = null
+  settled.value = false
+  // 动画期间必须保持 details 处于打开状态，否则内容不会被渲染，过渡会停在半路
+  details.open = true
+  open.value = next
+
+  if (reduce) {
     el.style.height = next ? 'auto' : '0px'
+    if (!next) {
+      settled.value = true
+      details.open = false
+    }
     return
   }
-  const current = el.getBoundingClientRect().height
-  el.style.height = `${current}px`
+
+  el.style.height = `${start}px`
   void el.offsetHeight
-  el.style.height = next ? `${el.scrollHeight}px` : '0px'
-  if (next) settleTimer = window.setTimeout(() => { el.style.height = 'auto' }, 380)
+  const end = next ? el.scrollHeight : 0
+  const anim = el.animate(
+    [{ height: `${start}px` }, { height: `${end}px` }],
+    {
+      duration: next ? 360 : 300,
+      easing: next ? 'cubic-bezier(0.22, 0.68, 0, 1)' : 'cubic-bezier(0.4, 0, 0.2, 1)',
+      fill: 'both'
+    }
+  )
+  animation = anim
+  anim.onfinish = () => {
+    el.style.height = next ? 'auto' : '0px'
+    anim.cancel()
+    if (animation === anim) animation = null
+    if (!next) {
+      settled.value = true
+      details.open = false
+    }
+  }
 }
+
+onBeforeUnmount(() => {
+  animation?.cancel()
+  animation = null
+})
 </script>
 
 <template>
-  <details class="disclosure" @toggle="onToggle">
-    <summary>
+  <details ref="root" class="disclosure" :class="{ 'is-open': open, 'is-hidden': settled }">
+    <summary :aria-expanded="open" @click.prevent="toggle">
       <div><strong>{{ title }}</strong><span v-if="sub">{{ sub }}</span></div>
       <Icon name="chevron-down" :size="18" />
     </summary>
     <div class="disclosure-content">
-      <div ref="inner" class="disclosure-inner" style="height: 0px"><slot /></div>
+      <div ref="inner" class="disclosure-inner" style="height: 0px">
+        <div class="disclosure-pad"><slot /></div>
+      </div>
     </div>
   </details>
 </template>
@@ -45,13 +90,16 @@ summary::-webkit-details-marker { display: none; }
 summary strong { display: block; font-size: 14px; font-weight: 600; }
 summary span { display: block; margin-top: 4px; color: var(--text-3); font-size: 12px; }
 summary > svg { color: var(--text-3); flex-shrink: 0; transition: transform 240ms ease-out; }
-details[open] > summary > svg { transform: rotate(180deg); }
+.disclosure.is-open > summary > svg { transform: rotate(180deg); }
 summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 /* 覆盖 UA 样式 details:not([open]) > :not(summary) { display:none }：内容常驻 DOM，
    收起态由 inner 的 px 高度动画控制；visibility 延迟到动画结束后再隐藏 */
-.disclosure-content { display: block; opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 240ms ease, visibility 0s 380ms; }
-details[open] .disclosure-content { opacity: 1; visibility: visible; pointer-events: auto; transition: opacity 240ms ease, visibility 0s 0s; }
-.disclosure-inner { overflow: hidden; padding: 0 24px 24px; transition: height 320ms cubic-bezier(.4, 0, .2, 1); }
-@media (prefers-reduced-motion: reduce) { .disclosure-content, .disclosure-inner { transition: none; } }
-@media (max-width: 680px) { summary { padding: 18px; } .disclosure-inner { padding: 0 16px 16px; } }
+.disclosure-content { display: block; opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 200ms ease, visibility 0s 320ms; }
+.disclosure.is-open .disclosure-content { opacity: 1; visibility: visible; pointer-events: auto; transition: opacity 200ms ease, visibility 0s 0s; }
+/* 收起动画结束后由 is-hidden 立即隐藏内容，避免 details 关闭后过渡被冻结 */
+.disclosure.is-hidden .disclosure-content { visibility: hidden; transition: none; }
+.disclosure-inner { overflow: hidden; }
+.disclosure-pad { padding: 0 24px 24px; }
+@media (prefers-reduced-motion: reduce) { .disclosure-content { transition: none; } }
+@media (max-width: 680px) { summary { padding: 18px; } .disclosure-pad { padding: 0 16px 16px; } }
 </style>
