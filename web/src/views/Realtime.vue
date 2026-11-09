@@ -161,7 +161,8 @@ const partitionShare = (rate: number) => rate / Math.max(1, partitions.value.red
 
 const chartOption = computed<import('echarts').EChartsOption>(() => ({
   animation: true,
-  animationDuration: 0,
+  animationDuration: 700,
+  animationType: 'expand',
   animationDurationUpdate: 260,
   animationEasingUpdate: 'linear',
   grid: { left: 6, right: 88, top: 26, bottom: 0, containLabel: true },
@@ -272,22 +273,22 @@ const totalMsg = computed(() => msgRate.value.toFixed(1))
     <section class="rt-kpis">
       <div class="rt-kpi">
         <span class="rt-kpi-label">当前速率</span>
-        <div v-liquid class="rt-kpi-value"><b class="num">{{ gbps }}</b><span>Gbps</span></div>
+        <div class="rt-kpi-value"><b v-text-reveal class="num">{{ gbps }}</b><span>Gbps</span></div>
         <span class="rt-kpi-foot"><span class="chip chip--green">正常</span> 门限 15 Gbps</span>
       </div>
       <div class="rt-kpi">
         <span class="rt-kpi-label">消息速率</span>
-        <div v-liquid class="rt-kpi-value"><b class="num">{{ totalMsg }}</b><span>万条 / 秒</span></div>
+        <div class="rt-kpi-value"><b v-text-reveal class="num">{{ totalMsg }}</b><span>万条 / 秒</span></div>
         <span class="rt-kpi-foot"><span class="dot dot--pulse" style="color: #34d399" />3 个分区持续写入</span>
       </div>
       <div class="rt-kpi">
         <span class="rt-kpi-label">在线消费者</span>
-        <div v-liquid class="rt-kpi-value"><b class="num">{{ consumers.length }}</b><span>/ 3</span></div>
+        <div class="rt-kpi-value"><b v-text-reveal class="num">{{ consumers.length }}</b><span>/ 3</span></div>
         <span class="rt-kpi-foot">{{ consumers.map((c) => c.id).join(' · ') }}</span>
       </div>
       <div class="rt-kpi">
         <span class="rt-kpi-label">分区最大滞后</span>
-        <div v-liquid class="rt-kpi-value"><b class="num">{{ lag }}</b><span>条</span></div>
+        <div class="rt-kpi-value"><b v-text-reveal class="num">{{ lag }}</b><span>条</span></div>
         <span class="rt-kpi-foot"><span class="chip chip--amber">低于阈值</span> 阈值 500</span>
       </div>
     </section>

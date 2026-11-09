@@ -36,6 +36,7 @@ const trendOption = computed(() => {
   const peakValue = d.hourly[d.peakIndex] ?? 0
   return {
     animationDuration: 600,
+    animationType: 'expand',
     color: [C.primary, '#a9b8d3'],
     grid: { ...gridBase, top: 34 },
     tooltip: {
@@ -226,7 +227,7 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
               地图<Icon name="chevron-right" :size="12" />
             </button>
           </template>
-          <div class="region-lead"><strong v-liquid="Boolean(data)" class="num">{{ data?.regionShare[0]?.share.toFixed(1) ?? '—' }}<small>%</small></strong><span>{{ data?.regionShare[0]?.region ?? '—' }}贡献最多流量</span></div>
+          <div class="region-lead"><strong v-text-reveal="Boolean(data)" class="num">{{ data?.regionShare[0]?.share.toFixed(1) ?? '—' }}<small>%</small></strong><span>{{ data?.regionShare[0]?.region ?? '—' }}贡献最多流量</span></div>
           <BaseChart :option="regionRankOption" :loading="loading && !data" height="224px" />
           <p class="chart-note">每刻度 {{ fmtBytes(regionTickUnit, 0) }} · 末刻度高度表示不足一格的余量</p>
         </Panel>

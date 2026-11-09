@@ -189,6 +189,8 @@ const trendOption = computed(() => {
   const focusedHour = heatPick.value?.day === day.index ? heatPick.value.hour : day.peakIndex
   return {
     animationDuration: 350,
+    animationType: chartType.value === 'line' ? 'expand' : 'expansion',
+    animationDelay: chartType.value === 'bar' ? (idx: number) => idx * 30 : undefined,
     grid: { ...gridBase, top: 24 },
     tooltip: { ...tooltipBase, trigger: 'axis', axisPointer: { type: chartType.value === 'bar' ? 'shadow' : 'line' }, formatter: (points: any[]) => {
       const current = points[0], before = points[1]

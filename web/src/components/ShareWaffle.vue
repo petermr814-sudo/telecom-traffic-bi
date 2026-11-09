@@ -17,8 +17,8 @@ const description = computed(() => groups.value.map(item => `${item.name} ${item
 
 <template>
   <div class="share-waffle" data-template="G4">
-    <svg v-liquid data-liquid-svg viewBox="0 0 300 145" role="img" :aria-label="description">
-      <circle v-for="(item, index) in dots" :key="index" :cx="10 + (index % 20) * 14.7" :cy="14 + Math.floor(index / 20) * 25" r="5.2" :fill="item.color" :data-group="item.name"><title>{{ item.name }} · {{ item.share.toFixed(1) }}%</title></circle>
+    <svg viewBox="0 0 300 145" role="img" :aria-label="description">
+      <circle v-for="(item, index) in dots" :key="index" class="waffle-dot-anim" :style="{ animationDelay: `${Math.floor(index / 20) * 110 + (index % 20) * 7}ms` }" :cx="10 + (index % 20) * 14.7" :cy="14 + Math.floor(index / 20) * 25" r="5.2" :fill="item.color" :data-group="item.name"><title>{{ item.name }} · {{ item.share.toFixed(1) }}%</title></circle>
     </svg>
     <ul class="waffle-legend">
       <li v-for="item in groups" :key="item.name"><span class="waffle-dot" :style="{ background: item.color }" /><span>{{ item.name }}</span><strong class="num">{{ item.share.toFixed(1) }}%</strong></li>
@@ -29,6 +29,13 @@ const description = computed(() => groups.value.map(item => `${item.name} ${item
 
 <style scoped>
 svg { display: block; width: 100%; max-width: 380px; margin: 0 auto 8px; }
+.waffle-dot-anim {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: dot-pop .28s cubic-bezier(.34, 1.4, .64, 1) backwards;
+}
+@keyframes dot-pop { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .waffle-dot-anim { animation: none; } }
 .waffle-legend { display: flex; flex-direction: column; gap: 12px; }
 .waffle-legend li { display: flex; align-items: center; gap: 9px; color: var(--text-2); font-size: 12px; }
 .waffle-legend strong { margin-left: auto; font-size: 13px; color: var(--text); }

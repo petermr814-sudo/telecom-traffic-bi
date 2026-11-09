@@ -107,22 +107,22 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
     <section class="stats">
       <div class="stat">
         <span class="stat-icon"><Icon name="layers" :size="16" /></span>
-        <div><span>今日作业</span><strong v-liquid="Boolean(data)" class="num">{{ data ? stats.total : '—' }}</strong></div>
+        <div><span>今日作业</span><strong v-text-reveal="Boolean(data)" class="num">{{ data ? stats.total : '—' }}</strong></div>
         <span class="stat-sub">Spark / MR / Flink</span>
       </div>
       <div class="stat">
         <span class="stat-icon green"><Icon name="check" :size="16" /></span>
-        <div><span>成功</span><strong v-liquid="Boolean(data)" class="num">{{ data ? stats.success : '—' }}</strong></div>
+        <div><span>成功</span><strong v-text-reveal="Boolean(data)" class="num">{{ data ? stats.success : '—' }}</strong></div>
         <span class="stat-sub">最近一次 {{ jobs[1]?.startTime?.slice(11) }}</span>
       </div>
       <div class="stat">
         <span class="stat-icon blue"><Icon name="refresh" :size="16" /></span>
-        <div><span>运行中</span><strong v-liquid="Boolean(data)" class="num">{{ data ? stats.running : '—' }}</strong></div>
+        <div><span>运行中</span><strong v-text-reveal="Boolean(data)" class="num">{{ data ? stats.running : '—' }}</strong></div>
         <span class="stat-sub">YARN 队列 normal</span>
       </div>
       <div class="stat">
         <span class="stat-icon red"><Icon name="alert" :size="16" /></span>
-        <div><span>失败</span><strong v-liquid="Boolean(data)" class="num">{{ data ? stats.failed : '—' }}</strong></div>
+        <div><span>失败</span><strong v-text-reveal="Boolean(data)" class="num">{{ data ? stats.failed : '—' }}</strong></div>
         <span class="stat-sub">可重跑</span>
       </div>
     </section>

@@ -4,7 +4,7 @@ import router from './router'
 import './styles/tokens.css'
 import './styles/base.css'
 import './styles/layout.css'
-import { vLiquid } from './lib/liquidReveal'
+import { vTextReveal } from './lib/textReveal'
 import { vSegMask } from './lib/segMask'
 
-createApp(App).directive('liquid', vLiquid).directive('seg-mask', vSegMask).use(router).mount('#app')
+createApp(App).directive('text-reveal', vTextReveal).directive('seg-mask', vSegMask).use(router).mount('#app')

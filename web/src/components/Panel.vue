@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import Icon from './Icon.vue'
-import LiquidLoader from './LiquidLoader.vue'
+import SkeletonLoader from './SkeletonLoader.vue'
 
 withDefaults(defineProps<{
   title: string
@@ -33,7 +33,7 @@ defineEmits<{ (e: 'retry'): void }>()
         <button class="btn btn--sm" @click="$emit('retry')">重试</button>
       </div>
       <div v-else-if="loading" class="state state--loading">
-        <LiquidLoader />
+        <SkeletonLoader variant="chart" />
       </div>
       <slot v-else />
     </div>

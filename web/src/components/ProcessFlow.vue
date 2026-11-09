@@ -8,7 +8,7 @@ defineProps<{ stages: PipelineStage[] }>()
 <template>
   <ol class="process-flow" data-template="G7" aria-label="数据处理阶段">
     <li v-for="(stage, index) in stages" :key="stage.name">
-      <div v-liquid class="flow-head"><span class="flow-node" :title="stage.status">{{ String(index + 1).padStart(2, '0') }}</span><span v-if="index < stages.length - 1" class="flow-link"><Icon name="chevron-right" :size="13" /></span></div>
+      <div class="flow-head"><span v-text-reveal class="flow-node" :title="stage.status">{{ String(index + 1).padStart(2, '0') }}</span><span v-if="index < stages.length - 1" class="flow-link"><Icon name="chevron-right" :size="13" /></span></div>
       <div class="flow-copy"><strong>{{ stage.name }}</strong><span>{{ stage.detail }}</span><b class="num">{{ stage.metric }}</b></div>
     </li>
   </ol>

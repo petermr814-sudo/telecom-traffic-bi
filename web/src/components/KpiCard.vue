@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import Icon from './Icon.vue'
-import LiquidLoader from './LiquidLoader.vue'
+import SkeletonLoader from './SkeletonLoader.vue'
 import { fmtDelta } from '@/lib/format'
 
 const props = withDefaults(defineProps<{
@@ -24,7 +24,7 @@ const good = computed(() => props.delta === undefined || props.delta === 0 ? nul
 <template>
   <article class="kpi" :aria-busy="loading">
     <div class="kpi-head"><span class="kpi-label">{{ label }}</span><Icon :name="icon" :size="18" /></div>
-    <div class="kpi-value" v-liquid="!loading"><LiquidLoader v-if="loading" compact /><template v-else><span class="num">{{ value }}</span><span v-if="unit" class="kpi-unit">{{ unit }}</span></template></div>
+    <div class="kpi-value"><SkeletonLoader v-if="loading" variant="line" compact /><template v-else><span v-text-reveal="!loading" class="num">{{ value }}</span><span v-if="unit" class="kpi-unit">{{ unit }}</span></template></div>
     <div class="kpi-foot">
       <span v-if="delta !== undefined" class="delta" :class="good === null ? 'delta--flat' : good ? 'delta--up' : 'delta--down'">
         <Icon :name="delta >= 0 ? 'arrow-up' : 'arrow-down'" :size="12" />{{ fmtDelta(Math.abs(delta)) }}

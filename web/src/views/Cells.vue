@@ -47,7 +47,6 @@ async function switchScatter(view: 'strip' | 'users', event: MouseEvent) {
   if (view === scatterView.value) return
   const version = ++switchVersion
   const chart = scatterChart.value?.getChart()
-  scatterChart.value?.finishLoadingMotion()
   const root = scatterPanel.value?.$el as HTMLElement | undefined
   const animate = event.detail > 0 && !reduceMotion.value && root && chart && !chart.isDisposed()
   animateScatter.value = Boolean(animate)
@@ -120,6 +119,7 @@ const scatterOption = computed(() => {
   })
   return {
     animationDuration: 350,
+    animationDelay: (idx: number) => (idx % 25) * 22,
     animation: !reduceMotion.value,
     animationDurationUpdate: animateScatter.value && !reduceMotion.value ? 460 : 0,
     animationEasingUpdate: 'cubicInOut',
@@ -236,22 +236,22 @@ onUnmounted(() => {
     <section class="stats">
       <button class="stat" :class="{ 'is-active': status === 'all' }" @click="status = 'all'">
         <span class="stat-icon blue"><Icon name="tower" :size="16" /></span>
-        <div><span>重点小区</span><strong v-liquid="Boolean(data)" class="num">{{ data ? summary.total : '—' }}</strong></div>
+        <div><span>重点小区</span><strong v-text-reveal="Boolean(data)" class="num">{{ data ? summary.total : '—' }}</strong></div>
         <span class="stat-sub">平均利用率 {{ summary.avgUtil.toFixed(1) }}%</span>
       </button>
       <button class="stat" :class="{ 'is-active': status === '预警' }" @click="setStatus('预警')">
         <span class="stat-icon amber"><Icon name="alert" :size="16" /></span>
-        <div><span>预警小区</span><strong v-liquid="Boolean(data)" class="num">{{ data ? summary.warning : '—' }}</strong></div>
+        <div><span>预警小区</span><strong v-text-reveal="Boolean(data)" class="num">{{ data ? summary.warning : '—' }}</strong></div>
         <span class="stat-sub">利用率 ≥ {{ ui.settings.warn }}%</span>
       </button>
       <button class="stat" :class="{ 'is-active': status === '拥塞' }" @click="setStatus('拥塞')">
         <span class="stat-icon red"><Icon name="zap" :size="16" /></span>
-        <div><span>拥塞小区</span><strong v-liquid="Boolean(data)" class="num">{{ data ? summary.congested : '—' }}</strong></div>
+        <div><span>拥塞小区</span><strong v-text-reveal="Boolean(data)" class="num">{{ data ? summary.congested : '—' }}</strong></div>
         <span class="stat-sub">利用率 ≥ {{ ui.settings.congest }}%</span>
       </button>
       <button class="stat" @click="expandOpen = true">
         <span class="stat-icon green"><Icon name="sparkles" :size="16" /></span>
-        <div><span>可扩容</span><strong v-liquid="Boolean(data)" class="num">{{ data ? summary.expandable : '—' }}</strong></div>
+        <div><span>可扩容</span><strong v-text-reveal="Boolean(data)" class="num">{{ data ? summary.expandable : '—' }}</strong></div>
         <span class="stat-sub">生成扩容建议 →</span>
       </button>
     </section>

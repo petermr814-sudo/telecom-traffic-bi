@@ -5,7 +5,7 @@ import Panel from '@/components/Panel.vue'
 import TrafficExplorer from '@/components/TrafficExplorer.vue'
 import Icon from '@/components/Icon.vue'
 import Select from '@/components/Select.vue'
-import LiquidLoader from '@/components/LiquidLoader.vue'
+import SkeletonLoader from '@/components/SkeletonLoader.vue'
 import { useAsync } from '@/lib/useAsync'
 import { api } from '@/api/client'
 import type { ProvinceRow } from '@/api/types'
@@ -49,6 +49,7 @@ const filtered = computed(() => {
     return (av - bv) * sortDir.value
   })
 })
+const filteredMax = computed(() => Math.max(1, ...filtered.value.map((r) => r.trafficBytes)))
 
 function setSort(k: typeof sortKey.value) {
   if (sortKey.value === k) sortDir.value *= -1
@@ -92,22 +93,22 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
     <section class="stats">
       <div class="stat">
         <span class="stat-label">覆盖省级行政区</span>
-        <strong v-liquid class="num">{{ rows.length }}</strong>
+        <strong v-text-reveal class="num">{{ rows.length }}</strong>
         <span class="stat-sub">7 个大区 · {{ rows.reduce((s, r) => s + r.cells, 0) }} 个重点小区</span>
       </div>
       <div class="stat">
         <span class="stat-label">流量最高</span>
-        <strong v-liquid>{{ topByTraffic?.province }}</strong>
+        <strong v-text-reveal>{{ topByTraffic?.province }}</strong>
         <span class="stat-sub">{{ fmtBytes(topByTraffic?.trafficBytes ?? 0, 0) }} · 占 {{ topByTraffic?.share.toFixed(1) }}%</span>
       </div>
       <div class="stat">
         <span class="stat-label">增长最快</span>
-        <strong v-liquid>{{ topByGrowth?.province }}</strong>
+        <strong v-text-reveal>{{ topByGrowth?.province }}</strong>
         <span class="stat-sub"><span class="delta delta--up">{{ fmtDelta(topByGrowth?.growth ?? 0) }}</span> · 较上期</span>
       </div>
       <div class="stat">
         <span class="stat-label">人均流量最高</span>
-        <strong v-liquid>{{ topByPerUser?.province }}</strong>
+        <strong v-text-reveal>{{ topByPerUser?.province }}</strong>
         <span class="stat-sub">{{ fmtBytes(topByPerUser?.perUserBytes ?? 0, 0) }} / 人</span>
       </div>
     </section>
@@ -199,8 +200,8 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
   </div>
 
   <div v-else class="skeleton-page">
-    <LiquidLoader class="card stats-skel" compact />
-    <LiquidLoader class="card map-skel" label="正在加载区域数据…" />
+    <SkeletonLoader class="card stats-skel" variant="line" compact />
+    <SkeletonLoader class="card map-skel" variant="chart" label="正在加载区域数据…" />
   </div>
 </template>
 
