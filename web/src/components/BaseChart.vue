@@ -3,9 +3,10 @@ import { onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import * as echarts from 'echarts'
 import SkeletonLoader from './SkeletonLoader.vue'
 
-const props = withDefaults(defineProps<{ option: echarts.EChartsOption; height?: string; replaceMerge?: string[]; loading?: boolean }>(), {
+const props = withDefaults(defineProps<{ option: echarts.EChartsOption; height?: string; replaceMerge?: string[]; loading?: boolean; enterAnimation?: boolean }>(), {
   height: '260px',
-  replaceMerge: () => []
+  replaceMerge: () => [],
+  enterAnimation: false
 })
 
 const emit = defineEmits<{ (e: 'chart-click', params: any): void }>()
@@ -38,7 +39,9 @@ function render() {
   if (!chart.value || (!painted.value && props.loading)) return
   const payload = toPlain(props.option)
   if (!payload.series) return
-  // 入场/更新动画由各图表 option 自行定制；仅「减少动态效果」时整体关闭
+  // 加载过程由骨架屏呈现：首次渲染默认直接落定，避免图形展开形成大面积遮罩；
+  // 动效画廊（enterAnimation）与后续更新保留 option 自身的动画配置
+  if (!painted.value && !props.enterAnimation) payload.animation = false
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) payload.animation = false
   if (props.replaceMerge.length) {
     chart.value.setOption(payload, { replaceMerge: props.replaceMerge, lazyUpdate: false })
@@ -121,7 +124,9 @@ defineExpose({ chart, getChart: () => chart.value, replay })
 <template>
   <div ref="host" class="chart-box" :style="{ height }" :aria-busy="loading || !painted" @chart:replay="replay">
     <div ref="el" class="chart-surface" :style="{ visibility: painted ? 'visible' : 'hidden' }" />
-    <SkeletonLoader v-if="!painted" class="chart-loading" variant="chart" compact />
+    <Transition name="skeleton">
+      <SkeletonLoader v-if="!painted" class="chart-loading" variant="chart" compact />
+    </Transition>
   </div>
 </template>
 
@@ -133,4 +138,6 @@ defineExpose({ chart, getChart: () => chart.value, replay })
 }
 .chart-surface { width: 100%; height: 100%; }
 .chart-loading { position: absolute; inset: 0; pointer-events: none; }
+.skeleton-leave-active { transition: opacity .3s ease; }
+.skeleton-leave-to { opacity: 0; }
 </style>

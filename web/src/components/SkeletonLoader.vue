@@ -21,13 +21,15 @@ withDefaults(defineProps<{ variant?: 'chart' | 'line'; label?: string; compact?:
 <style scoped>
 .skeleton { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-height: 110px; color: var(--text-3); }
 .skeleton-chart { display: flex; align-items: flex-end; gap: 8px; height: 64px; width: 150px; }
-.skeleton-bar { flex: 1; border-radius: 4px; background: var(--surface-3); position: relative; overflow: hidden; }
+.skeleton-bar { flex: 1; border-radius: 4px; background: #dfe3e9; position: relative; overflow: hidden; }
+.theme-dark .skeleton-bar { background: #182238; }
 .skeleton-bar::after, .skeleton-line::after {
   content: ''; position: absolute; inset: 0; transform: translateX(-100%);
   background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--bg) 55%, transparent), transparent);
   animation: skeleton-shimmer 1.4s ease infinite;
 }
-.skeleton-line { position: relative; width: 120px; height: 18px; border-radius: 5px; background: var(--surface-3); overflow: hidden; }
+.skeleton-line { position: relative; width: 120px; height: 18px; border-radius: 5px; background: #dfe3e9; overflow: hidden; }
+.theme-dark .skeleton-line { background: #182238; }
 .skeleton-label { font-size: 12px; }
 .is-compact { min-height: 0; height: 100%; }
 @keyframes skeleton-shimmer { to { transform: translateX(100%); } }

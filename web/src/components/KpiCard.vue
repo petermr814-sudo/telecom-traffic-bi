@@ -24,7 +24,7 @@ const good = computed(() => props.delta === undefined || props.delta === 0 ? nul
 <template>
   <article class="kpi" :aria-busy="loading">
     <div class="kpi-head"><span class="kpi-label">{{ label }}</span><Icon :name="icon" :size="18" /></div>
-    <div class="kpi-value"><SkeletonLoader v-if="loading" variant="line" compact /><template v-else><span v-text-reveal="!loading" class="num">{{ value }}</span><span v-if="unit" class="kpi-unit">{{ unit }}</span></template></div>
+    <div class="kpi-value"><Transition name="skeleton-fade"><SkeletonLoader v-if="loading" variant="line" compact /><span v-else class="kpi-value-fill"><span v-text-reveal="!loading" class="num">{{ value }}</span><span v-if="unit" class="kpi-unit">{{ unit }}</span></span></Transition></div>
     <div class="kpi-foot">
       <span v-if="delta !== undefined" class="delta" :class="good === null ? 'delta--flat' : good ? 'delta--up' : 'delta--down'">
         <Icon :name="delta >= 0 ? 'arrow-up' : 'arrow-down'" :size="12" />{{ fmtDelta(Math.abs(delta)) }}
@@ -41,6 +41,8 @@ const good = computed(() => props.delta === undefined || props.delta === 0 ? nul
 .kpi-value { display: flex; align-items: baseline; gap: 8px; margin-top: 18px; line-height: 1.1; min-height: 46.2px; }
 .kpi-value .num { font-size: clamp(30px, 2.8vw, 42px); font-weight: 650; letter-spacing: -.045em; }
 .kpi-unit { font-size: 14px; color: var(--text-3); }
+.skeleton-fade-leave-active { transition: opacity .25s ease; }
+.skeleton-fade-leave-to { opacity: 0; }
 .kpi-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 16px; font-size: 12px; color: var(--text-3); }
 .kpi-extra { margin-left: auto; }
 @media (max-width: 680px) { .kpi { padding: 20px; } .kpi-value .num { font-size: 30px; } }

@@ -27,15 +27,19 @@ defineEmits<{ (e: 'retry'): void }>()
       <div class="panel-actions"><slot name="actions" /></div>
     </header>
     <div class="panel-body" :class="{ 'is-flush': flush }" :aria-busy="loading">
-      <div v-if="error" class="state">
-        <Icon name="alert" :size="22" />
-        <p>{{ error }}</p>
-        <button class="btn btn--sm" @click="$emit('retry')">重试</button>
-      </div>
-      <div v-else-if="loading" class="state state--loading">
-        <SkeletonLoader variant="chart" />
-      </div>
-      <slot v-else />
+      <Transition name="skeleton-fade">
+        <div v-if="error" class="state">
+          <Icon name="alert" :size="22" />
+          <p>{{ error }}</p>
+          <button class="btn btn--sm" @click="$emit('retry')">重试</button>
+        </div>
+        <div v-else-if="loading" class="state state--loading">
+          <SkeletonLoader variant="chart" />
+        </div>
+        <div v-else>
+          <slot />
+        </div>
+      </Transition>
     </div>
   </section>
 </template>
@@ -64,5 +68,8 @@ defineEmits<{ (e: 'retry'): void }>()
 .state--loading {
   gap: 12px;
 }
+
+.skeleton-fade-leave-active { transition: opacity .25s ease; }
+.skeleton-fade-leave-to { opacity: 0; }
 
 </style>

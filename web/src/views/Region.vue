@@ -199,13 +199,17 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
     </Panel>
   </div>
 
-  <div v-else class="skeleton-page">
-    <SkeletonLoader class="card stats-skel" variant="line" compact />
-    <SkeletonLoader class="card map-skel" variant="chart" label="正在加载区域数据…" />
-  </div>
+  <Transition name="skeleton-fade">
+    <div v-if="!error && !data" class="skeleton-page">
+      <SkeletonLoader class="card stats-skel" variant="line" compact />
+      <SkeletonLoader class="card map-skel" variant="chart" label="正在加载区域数据…" />
+    </div>
+  </Transition>
 </template>
 
 <style scoped>
+.skeleton-fade-leave-active { transition: opacity .25s ease; }
+.skeleton-fade-leave-to { opacity: 0; }
 .page { display: flex; flex-direction: column; gap: 24px; }
 
 .stats {

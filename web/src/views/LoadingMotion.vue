@@ -41,7 +41,7 @@ const charts = computed(() => [
     <div class="motion-grid">
       <Panel v-for="item in charts" :key="item.key" :title="item.title" :sub="item.sub" :data-demo="item.key">
         <template #actions><button class="btn btn--sm" :aria-label="`重播${item.title}`" @click="replay(($event.currentTarget as HTMLElement).closest('.panel') as HTMLElement | null)">重播 ↻</button></template>
-        <BaseChart :option="item.option" height="230px" />
+        <BaseChart :option="item.option" height="230px" enter-animation />
       </Panel>
       <Panel title="流程 · 依次显现" sub="节点序号逐字浮现，保持链路的阅读顺序。" data-demo="flow"><template #actions><button class="btn btn--sm" @click="replay(($event.currentTarget as HTMLElement).closest('.panel') as HTMLElement | null)">重播 ↻</button></template><div class="motion-flow"><ProcessFlow :stages="[{ name: '采集', detail: '接入数据', metric: '已就绪', status: '正常' }, { name: '处理', detail: '聚合计算', metric: '已就绪', status: '正常' }, { name: '呈现', detail: '生成图表', metric: '已就绪', status: '正常' }]" /></div></Panel>
       <Panel title="构成 · 点阵成形" sub="100 个圆点逐行点亮，颜色对应原有时段构成。" data-demo="waffle"><template #actions><button class="btn btn--sm" @click="replay(($event.currentTarget as HTMLElement).closest('.panel') as HTMLElement | null)">重播 ↻</button></template><ShareWaffle :items="[{ name: '日间', value: 58, color: C.primary }, { name: '晚间', value: 29, color: '#7096d1' }, { name: '凌晨', value: 13, color: '#a6bddb' }]" /></Panel>
