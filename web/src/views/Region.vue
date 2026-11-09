@@ -115,7 +115,7 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
 
     <TrafficExplorer :provinces="rows" />
 
-      <Panel v-if="selectedRow" :title="selectedRow.province" :sub="`${selectedRow.region} · 流量排名第 ${selectedRank}`">
+      <Panel v-if="selectedRow" class="prov-detail-panel" :title="selectedRow.province" :sub="`${selectedRow.region} · 流量排名第 ${selectedRank}`">
         <template #actions>
           <button class="btn btn--sm" @click="selected = null"><Icon name="close" :size="12" />清除</button>
         </template>
@@ -124,7 +124,7 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
             <span class="detail-label">流量</span>
             <strong class="num">{{ fmtBytes(selectedRow.trafficBytes, 0) }}</strong>
           </div>
-          <span class="chip chip--blue">占全网 {{ selectedRow.share.toFixed(1) }}%</span>
+          <span class="prov-chip">占全网 {{ selectedRow.share.toFixed(1) }}%</span>
         </div>
         <div class="detail-grid">
           <div><span>活跃用户</span><strong class="num">{{ fmtCount(selectedRow.users) }}</strong></div>
@@ -154,8 +154,8 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
       </Panel>
 
 
-    <div class="section-heading"><h2>省份明细</h2><p>搜索、排序并比较各省表现</p></div>
-    <Panel title="省级明细" :sub="`${filtered.length} 条 · 点击表头排序`" flush>
+    <div class="section-heading prov-heading"><div class="prov-eyebrow">PROVINCE SURVEY <span>/ 04</span></div><h2>省份明细</h2><p>搜索、排序并比较各省表现</p></div>
+    <Panel class="prov-table-panel" title="省级明细" :sub="`${filtered.length} 条 · 点击表头排序`" flush>
       <template #actions>
         <div class="filters">
           <div class="search">
@@ -172,22 +172,22 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
               <th class="w-40">#</th>
               <th>省份</th>
               <th>大区</th>
-              <th class="num sortable" @click="setSort('traffic')">流量 <span class="sort">{{ sortKey === 'traffic' ? (sortDir < 0 ? '↓' : '↑') : '↕' }}</span></th>
-              <th class="num sortable" @click="setSort('users')">用户 <span class="sort">{{ sortKey === 'users' ? (sortDir < 0 ? '↓' : '↑') : '↕' }}</span></th>
-              <th class="num sortable" @click="setSort('perUser')">人均 <span class="sort">{{ sortKey === 'perUser' ? (sortDir < 0 ? '↓' : '↑') : '↕' }}</span></th>
-              <th class="num sortable" @click="setSort('growth')">同比 <span class="sort">{{ sortKey === 'growth' ? (sortDir < 0 ? '↓' : '↑') : '↕' }}</span></th>
+              <th class="num sortable" :class="{ 'is-sorted': sortKey === 'traffic' }" @click="setSort('traffic')">流量 <span class="sort">{{ sortKey === 'traffic' ? (sortDir < 0 ? '↓' : '↑') : '↕' }}</span></th>
+              <th class="num sortable" :class="{ 'is-sorted': sortKey === 'users' }" @click="setSort('users')">用户 <span class="sort">{{ sortKey === 'users' ? (sortDir < 0 ? '↓' : '↑') : '↕' }}</span></th>
+              <th class="num sortable" :class="{ 'is-sorted': sortKey === 'perUser' }" @click="setSort('perUser')">人均 <span class="sort">{{ sortKey === 'perUser' ? (sortDir < 0 ? '↓' : '↑') : '↕' }}</span></th>
+              <th class="num sortable" :class="{ 'is-sorted': sortKey === 'growth' }" @click="setSort('growth')">同比 <span class="sort">{{ sortKey === 'growth' ? (sortDir < 0 ? '↓' : '↑') : '↕' }}</span></th>
               <th class="num">小区</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="(r, i) in filtered" :key="r.province" class="row-click" :class="{ 'is-selected': selected === r.province }" @click="selectProvince(r.province)">
-              <td class="muted">{{ i + 1 }}</td>
-              <td class="is-strong">{{ r.province }}</td>
-              <td>{{ r.region }}</td>
-              <td class="num">{{ fmtBytes(r.trafficBytes, 0) }}</td>
+              <td class="rank-cell"><span class="rank-chip" :class="i < 3 ? `rank-${i + 1}` : ''">{{ i + 1 }}</span></td>
+              <td class="prov-name">{{ r.province }}</td>
+              <td><span class="region-tag">{{ r.region }}</span></td>
+              <td class="num"><div class="traffic-cell"><span>{{ fmtBytes(r.trafficBytes, 0) }}</span><i class="traffic-bar" :style="{ width: `${(r.trafficBytes / filteredMax) * 96}px` }" /></div></td>
               <td class="num">{{ fmtCount(r.users) }}</td>
               <td class="num">{{ fmtBytes(r.perUserBytes, 0) }}</td>
-              <td class="num"><span :class="r.growth >= 0 ? 'up' : 'down'">{{ fmtDelta(r.growth) }}</span></td>
+              <td class="num"><span class="growth-chip" :class="r.growth >= 0 ? 'is-up' : 'is-down'"><Icon :name="r.growth >= 0 ? 'arrow-up' : 'arrow-down'" :size="10" />{{ fmtDelta(r.growth) }}</span></td>
               <td class="num">{{ r.cells }}</td>
             </tr>
             <tr v-if="!filtered.length">
@@ -392,5 +392,60 @@ th.sortable:hover { color: var(--text); }
 .stat-label { font-size: 12px; }
 .region-note { font-size: 12px; line-height: 1.8; background: transparent; border-top: 1px solid var(--border); padding: 20px 0 0; }
 .filters { flex-wrap: wrap; }
+
+/* 省份明细：制图图集数据板 */
+.prov-heading { flex-direction: column; align-items: flex-start; gap: 4px; margin-top: 18px; }
+.prov-eyebrow { color: #87958c; font-size: 9px; letter-spacing: .14em; font-weight: 500; }
+.prov-eyebrow span { color: #bbc4bd; margin-left: 6px; }
+.prov-heading h2 { font-size: 17px; font-weight: 550; }
+.prov-heading p { font-size: 11px; }
+
+.prov-table-panel { border-color: #e2e9e0; border-radius: 14px; box-shadow: 0 6px 20px #233d3008; }
+.prov-table-panel :deep(.panel-head) { padding: 20px 20px 14px; border-bottom: 1px solid #eef2ea; }
+.prov-table-panel :deep(.panel-body) { padding: 0; }
+.prov-table-panel :deep(.panel-title) { font-size: 15px; }
+.prov-table-panel .table-scroll { max-height: 440px; }
+.prov-table-panel table { border-collapse: separate; border-spacing: 0; }
+.prov-table-panel thead th { position: sticky; top: 0; z-index: 2; background: #fafbf7; padding: 10px 12px; font-size: 10px; color: #87958c; font-weight: 500; letter-spacing: .05em; border-bottom: 1px solid #e9ede3; }
+.prov-table-panel thead th.sortable:hover { color: #2e7a6f; }
+.prov-table-panel th.is-sorted { color: #2e7a6f; }
+.prov-table-panel .sort { color: #b7c2b4; font-size: 10px; }
+.prov-table-panel th.is-sorted .sort { color: #2e7a6f; }
+.prov-table-panel tbody td { padding: 10px 12px; font-size: 11.5px; color: #43504b; border-bottom: 1px solid #f0f3ec; }
+.prov-table-panel tbody tr:last-child td { border-bottom: 0; }
+.prov-table-panel .row-click:hover td { background: #f6f8f3; }
+.prov-table-panel .row-click.is-selected td { background: #eef3ea; }
+.prov-table-panel .row-click.is-selected .prov-name { color: #2e7a6f; }
+.prov-table-panel .empty-cell { padding: 28px; color: #93a08f; }
+
+.rank-cell { width: 40px; }
+.rank-chip { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 5px; font: 10px var(--mono); color: #93a08f; background: #f2f4ee; }
+.rank-chip.rank-1 { color: #fff; background: #2e7a6f; }
+.rank-chip.rank-2 { color: #fff; background: #5f988f; }
+.rank-chip.rank-3 { color: #fff; background: #8db3ab; }
+
+.prov-name { font-size: 12.5px; font-weight: 600; color: #2f3d38; }
+.region-tag { display: inline-block; padding: 2px 7px; border: 1px solid #dfe7dd; border-radius: 999px; background: #f6f8f3; color: #7f9182; font-size: 9.5px; }
+
+.traffic-cell { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.traffic-cell span { font-size: 11.5px; color: #3c4a44; }
+.traffic-bar { display: block; height: 2px; max-width: 96px; border-radius: 2px; background: #2e7a6f; opacity: .5; }
+
+.growth-chip { display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: 999px; font-size: 10.5px; }
+.growth-chip.is-up { color: #2e7a6f; background: #e7f1ea; }
+.growth-chip.is-down { color: #b05050; background: #f6ebea; }
+
+.prov-detail-panel { border-color: #e2e9e0; border-radius: 14px; box-shadow: 0 6px 20px #233d3008; }
+.prov-detail-panel .detail-hero { border-color: #e9ede3; }
+.prov-detail-panel .detail-hero strong { color: #2f3d38; }
+.prov-detail-panel .detail-grid { border-color: #e9ede3; background: #e9ede3; }
+.prov-detail-panel .detail-grid span { color: #87958c; }
+.prov-detail-panel .detail-grid strong { color: #2f3d38; }
+.prov-chip { display: inline-flex; align-items: center; padding: 3px 10px; border: 1px solid #d3e3d8; border-radius: 999px; background: #e7f1ea; color: #2e7a6f; font-size: 10px; font-weight: 500; }
+.prov-detail-panel .peer-list li:hover { background: #f4f7f0; }
+.prov-detail-panel .peer-list li.is-active { background: #eef3ea; color: #2e7a6f; }
+.prov-detail-panel .peer-bar { background: #eef1ea; }
+.prov-detail-panel .peer-bar i { background: #2e7a6f; }
+.prov-detail-panel .detail-action { background: #eef3ea; border-color: #d9e6da; color: #2e7a6f; }
 
 </style>
