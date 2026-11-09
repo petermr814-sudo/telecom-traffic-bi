@@ -3,7 +3,8 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import Icon from './Icon.vue'
-import { loadManifest, loadDem, loadSurface, TERRAIN_BASE, type TerrainManifest, type ElevationRaster } from '@/lib/terrain'
+import { loadManifest, loadDem, loadSurface, HEIGHT_SCALE, TERRAIN_BASE, type TerrainManifest, type ElevationRaster } from '@/lib/terrain'
+import { fitMapDistance, MAP_FOCUS_RESPONSE, MapCameraMotion } from '@/lib/mapCameraMotion'
 import type { ProvinceRow } from '@/api/types'
 import { cityMetric, type CityTraffic, type MapMetric } from '@/lib/cityTraffic'
 
@@ -59,9 +60,9 @@ let width = 0
 let height = 0
 const abort = new AbortController()
 const reduced = window.matchMedia('(prefers-reduced-motion: reduce)')
-let flight: { mode: 'cinematic' | 'glide'; start: number; from: THREE.Vector3; to: THREE.Vector3; fromTarget: THREE.Vector3; target: THREE.Vector3; duration: number; dist: number } | null = null
+let cameraMotion: MapCameraMotion | undefined
+let cameraReady = false
 let lastNow = 0
-const homeTarget = new THREE.Vector3(0, 0, 0)
 
 function project([lng, lat]: Coordinate) {
   // A single Mercator projection is shared by the province and city boundaries.
@@ -86,26 +87,6 @@ function terrainHeight(point: Coordinate) {
   // markers and lines above the visible national terrain kept underneath as context.
   if (activeDem !== nationalDem && nationalDem && !activeDem.contains(point[0], point[1])) return nationalDem.height(point[0], point[1])
   return activeDem.height(point[0], point[1])
-}
-const GHOST_OPACITY = 0.5
-const GHOST_TINT = new THREE.Color('#c9cec6')
-const FULL_TINT = new THREE.Color('#f7f6f2')
-let ghostMix = 0
-let ghostTarget = 0
-function applyGhostMix() {
-  if (!nationalSurface) return
-  const material = nationalSurface.material as THREE.MeshStandardMaterial
-  material.opacity = 1 - ghostMix * (1 - GHOST_OPACITY)
-  // A touch of sage gray keeps flat plains from melting into the page background.
-  material.color.copy(FULL_TINT).lerp(GHOST_TINT, ghostMix)
-}
-function setGhost(ghost: boolean) {
-  const target = ghost ? 1 : 0
-  if (ghostTarget === target) return
-  ghostTarget = target
-  if (reduced.matches) { ghostMix = target; applyGhostMix() }
-  dirty = true
-  wake()
 }
 function addBoundary(feature: Feature, group: THREE.Group, selected = false) {
   for (const polygon of polygons(feature)) {
@@ -147,18 +128,16 @@ async function loadCityTerrain() {
     activeDem = nationalDem
     terrainDetail.value = 'national'
     terrainStatus.value = '真实高程 · 垂直夸张 ×24'
-    setGhost(false)
     redrawBoundaries(); updateMarkers(); dirty = true
     return
   }
-  // Keep the national terrain underneath as a soft context layer while switching,
-  // so a failed detail request cannot leave an empty void around the new destination.
+  // Keep the complete national terrain at its normal material and opacity.
+  // Selection highlights belong to the city outline and markers only.
   if (citySurface) { land.remove(citySurface); citySurface = undefined }
   provinceGroup.visible = false
   activeDem = nationalDem
   terrainDetail.value = 'national'
   terrainStatus.value = '正在载入城市周边精细地形…'
-  setGhost(true)
   try {
     const cached = detailCache.get(name as string)
     const [mesh, dem] = cached ? [cached.mesh, cached.dem] : await Promise.all([loadSurface(info, abort.signal), loadDem(info.dem, abort.signal)])
@@ -179,9 +158,7 @@ async function loadCityTerrain() {
     wake()
   } catch (e) {
     if (!destroyed && request === detailRequest) {
-      // No city mesh to highlight: the national terrain must return to full strength.
       provinceGroup.visible = true
-      setGhost(false)
       redrawBoundaries(); updateMarkers()
       terrainStatus.value = '城市精细地形载入失败 · 当前使用全国地形'
     }
@@ -227,45 +204,51 @@ function updateFocus() {
   redrawBoundaries()
   updateMarkers()
 }
-function homePosition() {
-  const fit = Math.max(1, 1.45 / Math.max(camera.aspect, 0.35))
-  return new THREE.Vector3(0, 57 * fit, 48 * fit)
+function setMoving(value: boolean) {
+  if (moving.value === value) return
+  moving.value = value
+  emit('moving', value)
 }
-function setMoving(value: boolean) { moving.value = value; emit('moving', value) }
-function flyToCity(instant = false, mode: 'cinematic' | 'glide' = 'cinematic') {
-  if (!controls) return
-  const marker = props.selected ? markerObjects.get(props.selected) : undefined
-  const target = marker ? marker.center.clone() : homeTarget.clone()
-  let destination = homePosition()
-  if (marker) {
-    const feature = cityGeo.find(g => g.properties.name === props.selected)
-    const bounds = new THREE.Box2()
-    if (feature) polygons(feature).forEach(poly => poly[0].forEach(point => bounds.expandByPoint(project(point))))
-    const span = bounds.isEmpty() ? 4 : Math.max(bounds.max.x - bounds.min.x, bounds.max.y - bounds.min.y)
-    if (!bounds.isEmpty()) {
-      target.x = (bounds.min.x + bounds.max.x) / 2
-      target.z = -(bounds.min.y + bounds.max.y) / 2
+function focusBounds() {
+  const feature = cityGeo.find(g => g.properties.name === props.selected)
+  if (feature) {
+    const bounds = new THREE.Box3()
+    for (const polygon of polygons(feature)) for (const point of polygon[0]) {
+      const p = project(point)
+      bounds.expandByPoint(new THREE.Vector3(p.x, 0, -p.y))
     }
-    target.y = terrainHeight(feature?.properties.center ?? [104.5, 36]) * .25
-    const distance = Math.max(1.8, span * 1.3) * Math.max(1, 0.85 / camera.aspect)
-    destination = target.clone().add(new THREE.Vector3(distance * 0.12, distance * 1.2, distance * 0.8))
+    const info = manifest?.cities[props.selected!]
+    const elevation = terrainHeight(feature.properties.center ?? [104.5, 36])
+    bounds.min.y = (info ? TERRAIN_BASE + info.minElevation * HEIGHT_SCALE : elevation) * .25
+    bounds.max.y = (info ? TERRAIN_BASE + info.maxElevation * HEIGHT_SCALE : elevation) * .25
+    return bounds
   }
-  // Cancel inertia before taking camera ownership; a new click starts at the current pose.
+  return nationalSurface!.geometry.boundingBox!.clone()
+}
+function clearOrbitInertia() {
+  if (!controls) return
+  // OrbitControls clears its pending deltas only in update(). Restore the live
+  // pose afterwards so taking ownership does not apply the remaining inertia.
+  const position = camera.position.clone()
+  const target = controls.target.clone()
   controls.enableDamping = false
   controls.update()
-  controls.enableDamping = !reduced.matches
-  const animate = !instant && !reduced.matches
-  flight = {
-    mode: animate && mode === 'glide' ? 'glide' : 'cinematic',
-    start: performance.now(),
-    from: camera.position.clone(),
-    to: destination,
-    fromTarget: controls.target.clone(),
-    target,
-    duration: animate ? 1450 : 0,
-    dist: camera.position.distanceTo(destination)
-  }
-  setMoving(animate)
+  camera.position.copy(position)
+  controls.target.copy(target)
+  controls.update()
+}
+function flyToCity(instant = false) {
+  if (!controls || !cameraMotion || !nationalSurface || !width || !height) return
+  clearOrbitInertia()
+  const bounds = focusBounds()
+  const target = bounds.getCenter(new THREE.Vector3())
+  const direction = camera.position.clone().sub(controls.target).normalize()
+  const distance = fitMapDistance(camera, bounds, target, direction)
+  cameraMotion.focus(target, distance, instant || reduced.matches)
+  controls.enableDamping = !cameraMotion.active && !reduced.matches
+  controls.update()
+  cameraReady = true
+  setMoving(cameraMotion.active)
   dirty = true
   wake()
 }
@@ -303,50 +286,23 @@ function renderGeographyLabels() {
 }
 function tick(now: number) {
   raf = 0
-  if (destroyed || !renderer || !controls || !visible || document.hidden) return
-  const dt = Math.min(Math.max((now - lastNow) / 1000, 0), 0.1)
+  if (destroyed || !renderer || !controls || !visible || document.hidden) { lastNow = 0; return }
+  const dt = lastNow ? Math.min(Math.max((now - lastNow) / 1000, 0), 0.05) : 1 / 60
   lastNow = now
-  if (flight) {
-    if (flight.mode === 'glide') {
-      // Real-time damped travel: every frame re-computes the move toward the
-      // destination from the live pose, instead of replaying the focus timeline.
-      if (reduced.matches) {
-        camera.position.copy(flight.to)
-        controls.target.copy(flight.target)
-      } else {
-        const rate = THREE.MathUtils.clamp(26 / (flight.dist + 2), 2.4, 7)
-        camera.position.lerp(flight.to, 1 - Math.exp(-rate * dt))
-        controls.target.lerp(flight.target, 1 - Math.exp(-rate * dt))
-      }
-      const arrived = reduced.matches || (camera.position.distanceTo(flight.to) < 0.01 && controls.target.distanceTo(flight.target) < 0.01)
-      if (arrived) {
-        camera.position.copy(flight.to)
-        controls.target.copy(flight.target)
-        flight = null
-        setMoving(false)
-      }
-    } else {
-      const t = flight.duration ? Math.min((now - flight.start) / flight.duration, 1) : 1
-      const eased = t * t * t * (t * (t * 6 - 15) + 10)
-      camera.position.lerpVectors(flight.from, flight.to, eased)
-      camera.position.y += Math.sin(Math.PI * t) * flight.from.distanceTo(flight.to) * 0.075
-      controls.target.lerpVectors(flight.fromTarget, flight.target, eased)
-      if (t === 1) { flight = null; setMoving(false) }
-    }
+  if (cameraMotion?.active) {
+    cameraMotion.step(dt)
+    setMoving(cameraMotion.active)
+    controls.enableDamping = !cameraMotion.active && !reduced.matches
     dirty = true
   }
-  if (ghostMix !== ghostTarget) {
-    if (reduced.matches) ghostMix = ghostTarget
-    else {
-      ghostMix += (ghostTarget - ghostMix) * (1 - Math.exp(-6 * dt))
-      if (Math.abs(ghostTarget - ghostMix) < 0.004) ghostMix = ghostTarget
-    }
-    applyGhostMix()
+  const terrainScale = props.selected ? .25 : 1
+  if (land.scale.y !== terrainScale) {
+    land.scale.y = reduced.matches ? terrainScale : THREE.MathUtils.lerp(land.scale.y, terrainScale, 1 - Math.exp(-MAP_FOCUS_RESPONSE * dt))
+    if (Math.abs(land.scale.y - terrainScale) < .0005) land.scale.y = terrainScale
     dirty = true
   }
   if (controls.update()) dirty = true
   if (dirty) {
-    land.scale.y = props.selected ? .25 : 1
     land.updateMatrixWorld(true)
     renderer.render(scene, camera)
     renderLabels()
@@ -358,14 +314,19 @@ function tick(now: number) {
 function wake() { if (!raf && !destroyed) raf = requestAnimationFrame(tick) }
 function resize() {
   if (!host.value || !renderer) return
-  width = host.value.clientWidth
-  height = host.value.clientHeight
-  if (!width || !height) return
+  const nextWidth = host.value.clientWidth, nextHeight = host.value.clientHeight
+  if (!nextWidth || !nextHeight || (width === nextWidth && height === nextHeight)) return
+  width = nextWidth
+  height = nextHeight
   camera.aspect = width / height
   camera.updateProjectionMatrix()
   renderer.setSize(width, height)
-  flyToCity(true)
+  // Initial framing is immediate. Later resizing preserves a manually adjusted
+  // pose; an active flight simply updates its fit without resetting velocity.
+  if (!cameraReady) flyToCity(true)
+  else if (cameraMotion?.active) flyToCity()
   dirty = true
+  wake()
 }
 function hitCity(event: PointerEvent) {
   if (!host.value) return undefined
@@ -378,13 +339,21 @@ function onDown(event: PointerEvent) { dragStart = { x: event.clientX, y: event.
 function onUp(event: PointerEvent) {
   if (event.button !== 0 || !dragStart || Math.hypot(event.clientX - dragStart.x, event.clientY - dragStart.y) > 5) return
   const city = hitCity(event)
-  if (city) emit('select', city)
+  if (city) selectCity(city)
   dragStart = undefined
 }
 function onMove(event: PointerEvent) {
   if (renderer) renderer.domElement.style.cursor = hitCity(event) ? 'pointer' : 'grab'
 }
-function cancelFlight() { flight = null; setMoving(false) }
+function cancelFlight() {
+  cameraMotion?.stop()
+  if (controls) controls.enableDamping = !reduced.matches
+  setMoving(false)
+}
+function selectCity(name: string) {
+  if (name === props.selected) flyToCity()
+  else emit('select', name)
+}
 function resetView() {
   // Leaving a city flies home via the selected watch; when already national the
   // button just re-frames the camera.
@@ -394,14 +363,22 @@ function resetView() {
 function zoom(factor: number) {
   if (!controls) return
   cancelFlight()
+  clearOrbitInertia()
   const offset = camera.position.clone().sub(controls.target)
   offset.setLength(THREE.MathUtils.clamp(offset.length() * factor, controls.minDistance, controls.maxDistance))
   camera.position.copy(controls.target).add(offset)
   controls.update()
+  controls.enableDamping = !reduced.matches
   dirty = true
+  wake()
 }
-function onVisibility() { if (!document.hidden) { dirty = true; wake() } }
-function onMotionChange() { if (controls) controls.enableDamping = !reduced.matches; if (flight && reduced.matches) flight.duration = 0 }
+function onVisibility() { lastNow = 0; if (!document.hidden) { dirty = true; wake() } }
+function onMotionChange() {
+  if (cameraMotion?.active && reduced.matches) { cameraMotion.finish(); setMoving(false) }
+  if (controls) controls.enableDamping = !reduced.matches && !cameraMotion?.active
+  dirty = true
+  wake()
+}
 function onContextLost(event: Event) {
   event.preventDefault()
   cancelAnimationFrame(raf)
@@ -451,10 +428,9 @@ onMounted(async () => {
     const [surface, dem] = await Promise.all([loadSurface(manifest.national, abort.signal), loadDem(manifest.dem, abort.signal)])
     if (destroyed) { disposeGroup(surface); return }
     nationalSurface = surface
-    // Stays transparent for the whole session: focused city views fade this layer
-    // into a soft ghost instead of hiding it, so the rest of the map stays visible.
+    surface.geometry.computeBoundingBox()
+    // Both terrain levels use the same opaque white material during selection.
     const surfaceMaterial = surface.material as THREE.MeshStandardMaterial
-    surfaceMaterial.transparent = true
     surfaceMaterial.polygonOffset = true
     surfaceMaterial.polygonOffsetFactor = 1
     surfaceMaterial.polygonOffsetUnits = 1
@@ -462,6 +438,7 @@ onMounted(async () => {
     activeDem = dem
     land.add(surface)
     for (const feature of china.features) addBoundary(feature, provinceGroup)
+    camera.position.set(0, 57, 48)
     controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = !reduced.matches
     controls.dampingFactor = 0.09
@@ -470,6 +447,7 @@ onMounted(async () => {
     controls.minPolarAngle = 0.15
     controls.maxPolarAngle = Math.PI / 2.65
     controls.enablePan = true
+    cameraMotion = new MapCameraMotion(camera, controls.target, controls.minDistance, controls.maxDistance)
     controls.addEventListener('start', cancelFlight)
     controls.addEventListener('change', () => { dirty = true })
     renderer.domElement.addEventListener('pointerdown', onDown)
@@ -481,7 +459,7 @@ onMounted(async () => {
     updateFocus()
     ro = new ResizeObserver(resize)
     ro.observe(host.value)
-    io = new IntersectionObserver(entries => { visible = entries[0].isIntersecting; if (visible) wake() })
+    io = new IntersectionObserver(entries => { visible = entries[0].isIntersecting; lastNow = 0; if (visible) wake() })
     io.observe(host.value)
     document.addEventListener('visibilitychange', onVisibility)
     reduced.addEventListener('change', onMotionChange)
@@ -491,11 +469,9 @@ onMounted(async () => {
     if (!destroyed) error.value = `${(e as Error).message}。可从城市列表继续查看数据。`
   } finally { loading.value = false }
 })
-watch(() => props.selected, (name, prev) => {
+watch(() => props.selected, () => {
   updateFocus()
-  // Switching between focused cities travels in real time from the live pose;
-  // entering a city (or returning home) keeps the cinematic focus animation.
-  flyToCity(false, name && prev ? 'glide' : 'cinematic')
+  flyToCity()
 })
 watch(() => [props.metric, props.cities, props.provinces], () => { updateColors(); updateMarkers() })
 onUnmounted(() => {
@@ -527,7 +503,7 @@ onUnmounted(() => {
   <div ref="host" class="traffic-scene" :data-view="selected || 'national'" :data-moving="moving" :data-metric="metric" :data-terrain="terrainDetail" :aria-busy="loading" @keydown.esc.stop="emit('reset')">
     <div class="scene-location"><span class="location-dot" /><span>{{ selected ? `${selectedCity?.province} / ${selected}` : '中国 · 全国视角' }}</span><span class="view-tag">{{ selected ? 'CITY' : '3D' }}</span></div>
     <div ref="labelLayer" class="city-labels" aria-label="地图城市">
-      <button v-for="city in cities" :key="city.name" :data-city="city.name" class="city-pin" :class="{ 'is-selected': selected === city.name }" :aria-label="`聚焦${city.name}`" :aria-pressed="selected === city.name" hidden @click.stop="emit('select', city.name)">{{ city.name }}</button>
+      <button v-for="city in cities" :key="city.name" :data-city="city.name" class="city-pin" :class="{ 'is-selected': selected === city.name }" :aria-label="`聚焦${city.name}`" :aria-pressed="selected === city.name" hidden @click.stop="selectCity(city.name)">{{ city.name }}</button>
     </div>
     <div class="geography-labels" aria-hidden="true"><span v-for="place in geographyLabels" :key="place.name" class="geography-label" hidden>{{ place.name }}</span></div>
     <div class="terrain-source"><span>{{ terrainStatus }}</span><a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noreferrer">Mapzen · USGS / NOAA</a></div>
