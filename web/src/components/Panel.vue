@@ -69,7 +69,12 @@ defineEmits<{ (e: 'retry'): void }>()
   gap: 12px;
 }
 
-.skeleton-fade-leave-active { transition: opacity .25s ease; }
+.panel-body {
+  position: relative;
+}
+
+/* 退场骨架脱离文档流，避免占位把内容顶走、卸载帧回弹（跳变） */
+.skeleton-fade-leave-active { transition: opacity .25s ease; position: absolute; left: 0; right: 0; top: 0; }
 .skeleton-fade-leave-to { opacity: 0; }
 
 </style>

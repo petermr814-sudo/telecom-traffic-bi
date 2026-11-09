@@ -38,10 +38,11 @@ const good = computed(() => props.delta === undefined || props.delta === 0 ? nul
 .kpi { min-width: 0; padding: 24px 26px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); filter: drop-shadow(0 6px 18px rgba(13, 22, 41, 0.05)); }
 .kpi-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text-3); }
 .kpi-label { color: var(--text-2); font-size: 13px; }
-.kpi-value { display: flex; align-items: baseline; gap: 8px; margin-top: 18px; line-height: 1.1; min-height: 46.2px; }
+.kpi-value { position: relative; display: flex; align-items: baseline; gap: 8px; margin-top: 18px; line-height: 1.1; min-height: 46.2px; }
 .kpi-value .num { font-size: clamp(30px, 2.8vw, 42px); font-weight: 650; letter-spacing: -.045em; }
 .kpi-unit { font-size: 14px; color: var(--text-3); }
-.skeleton-fade-leave-active { transition: opacity .25s ease; }
+/* 退场骨架脱离文档流，避免占位把数值顶右、卸载帧回弹（跳变） */
+.skeleton-fade-leave-active { transition: opacity .25s ease; position: absolute; left: 0; top: 0; height: 100%; }
 .skeleton-fade-leave-to { opacity: 0; }
 .kpi-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 16px; font-size: 12px; color: var(--text-3); }
 .kpi-extra { margin-left: auto; }
