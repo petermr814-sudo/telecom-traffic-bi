@@ -59,6 +59,22 @@ try {
     const row = [...document.querySelectorAll('.info-row')].find(el => el.textContent.includes('当前区域'))
     row?.querySelector('button')?.click()
   })
+  const regionSamples = await page.evaluate(async () => {
+    const wrap = document.querySelector('.region-grid__collapse')
+    const out = []
+    const start = performance.now()
+    await new Promise(resolve => {
+      const tick = () => {
+        out.push({ t: performance.now() - start, h: wrap.getBoundingClientRect().height })
+        if (performance.now() - start < 450) requestAnimationFrame(tick)
+        else resolve()
+      }
+      requestAnimationFrame(tick)
+    })
+    return out
+  })
+  const regionHeights = new Set(regionSamples.map(s => Math.round(s.h * 10))).size
+  check('区域菜单展开有拉伸动画', regionHeights >= 10 && regionSamples[regionSamples.length - 1].h > 50, { frames: regionHeights, end: regionSamples[regionSamples.length - 1].h })
   await sleep(200)
   await page.evaluate(() => [...document.querySelectorAll('.region-grid__item')].find(el => el.textContent.trim() === '华东').click())
   await sleep(250)

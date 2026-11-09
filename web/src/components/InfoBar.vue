@@ -16,13 +16,17 @@ const statusWrap = ref<HTMLElement | null>(null)
 const actionsWrap = ref<HTMLElement | null>(null)
 const statusH = ref('auto')
 const actionsH = ref('auto')
-let collapseRaf = 0
+// 区域菜单同样由 JS 高度补间驱动；每个动画独立 RAF，互不打断
+const regionWrap = ref<HTMLElement | null>(null)
+const regionH = ref('0px')
+const sectionRaf = { id: 0 }
+const regionRaf = { id: 0 }
 
 const quadEaseInOut = (p: number) => (p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2)
 
-function tweenCollapse(wrap: HTMLElement, open: boolean, setH: (v: string) => void) {
-  cancelAnimationFrame(collapseRaf)
-  const inner = wrap.querySelector<HTMLElement>('.info-section__inner')
+function tweenCollapse(wrap: HTMLElement, open: boolean, setH: (v: string) => void, rafBox: { id: number }) {
+  cancelAnimationFrame(rafBox.id)
+  const inner = wrap.querySelector<HTMLElement>('.info-section__inner, .region-grid__inner')
   if (!inner) return
   const from = wrap.offsetHeight
   const target = open ? inner.scrollHeight : 0
@@ -35,13 +39,14 @@ function tweenCollapse(wrap: HTMLElement, open: boolean, setH: (v: string) => vo
     const p = Math.min(1, (now - start) / 260)
     const eased = quadEaseInOut(p)
     setH(`${from + (target - from) * eased}px`)
-    if (p < 1) collapseRaf = requestAnimationFrame(step)
+    if (p < 1) rafBox.id = requestAnimationFrame(step)
     else setH(open ? 'auto' : '0px')
   }
-  collapseRaf = requestAnimationFrame(step)
+  rafBox.id = requestAnimationFrame(step)
 }
-watch(statusOpen, open => { if (statusWrap.value) tweenCollapse(statusWrap.value, open, v => statusH.value = v) })
-watch(actionsOpen, open => { if (actionsWrap.value) tweenCollapse(actionsWrap.value, open, v => actionsH.value = v) })
+watch(statusOpen, open => { if (statusWrap.value) tweenCollapse(statusWrap.value, open, v => statusH.value = v, sectionRaf) })
+watch(actionsOpen, open => { if (actionsWrap.value) tweenCollapse(actionsWrap.value, open, v => actionsH.value = v, sectionRaf) })
+watch(regionOpen, open => { if (regionWrap.value) tweenCollapse(regionWrap.value, open, v => regionH.value = v, regionRaf) })
 
 const regionLabel = computed(() => (ui.region === 'all' ? '全国' : ui.region))
 const modeLabel = api.mode === 'api' ? '真实接口' : '本地模拟'
@@ -56,7 +61,8 @@ function onFullscreenChange() {
 onMounted(() => document.addEventListener('fullscreenchange', onFullscreenChange))
 onUnmounted(() => {
   document.removeEventListener('fullscreenchange', onFullscreenChange)
-  cancelAnimationFrame(collapseRaf)
+  cancelAnimationFrame(sectionRaf.id)
+  cancelAnimationFrame(regionRaf.id)
 })
 
 function close() {
@@ -129,18 +135,22 @@ async function copyLink() {
                     {{ regionLabel }}<Icon name="chevron-down" :size="12" />
                   </button>
                 </div>
-                <div v-if="regionOpen" class="region-grid" role="listbox">
-                  <button
-                    v-for="r in REGIONS"
-                    :key="r"
-                    class="region-grid__item"
-                    :class="{ 'is-selected': ui.region === r }"
-                    role="option"
-                    :aria-selected="ui.region === r"
-                    @click="ui.region = r; regionOpen = false; close()"
-                  >
-                    {{ r === 'all' ? '全国' : r }}
-                  </button>
+                <div ref="regionWrap" class="region-grid__collapse" :style="{ height: regionH }">
+                  <div class="region-grid__inner">
+                    <div class="region-grid" role="listbox">
+                      <button
+                        v-for="r in REGIONS"
+                        :key="r"
+                        class="region-grid__item"
+                        :class="{ 'is-selected': ui.region === r }"
+                        role="option"
+                        :aria-selected="ui.region === r"
+                        @click="ui.region = r; regionOpen = false; close()"
+                      >
+                        {{ r === 'all' ? '全国' : r }}
+                      </button>
+                    </div>
+                  </div>
                 </div>
                 <div class="info-row">
                   <span class="info-row__label"><Icon name="clock" :size="13" />数据更新</span>
@@ -302,8 +312,9 @@ async function copyLink() {
 .info-section__head[aria-expanded='false'] .info-section__chevron {
   transform: rotate(-90deg);
 }
-/* 折叠分区：高度由 JS 补间驱动（tweenCollapse），这里只负责裁切 */
-.info-section__collapse {
+/* 折叠分区与区域菜单：高度由 JS 补间驱动，这里只负责裁切 */
+.info-section__collapse,
+.region-grid__collapse {
   overflow: hidden;
 }
 .info-section__inner {
