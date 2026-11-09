@@ -36,8 +36,10 @@ const clickDay = dayIndex => page.evaluate(d => {
 }, dayIndex)
 const dayPeak = (data, dayIndex) => data.filter(p => p[1] === dayIndex).reduce((best, p) => (p[2] > best[2] ? p : best))
 
-// 圆环探针：按样式公式计算圆环圆心/半径，沿圆周采样 canvas 像素统计虚线描边命中
-function probeRing(hour, day, mode) {
+// 圆环探针：按样式公式计算手绘墨圈的圆心/平均半径，在环带内采样 canvas 统计笔触命中
+async function probeRing(hour, day, mode) {
+  // BaseChart 延迟 280ms 初始化，且 HMR/重挂载会清掉 __chart——先等图表就绪再采样
+  await page.waitForFunction(() => Boolean(document.querySelector('[data-template="F10"] .chart-box')?.__chart), { timeout: 4000 })
   return page.evaluate(({ hour, day, mode }) => {
     const box = document.querySelector('[data-template="F10"] .chart-box')
     const chart = box.__chart
@@ -67,23 +69,30 @@ function probeRing(hour, day, mode) {
     const canvas = box.querySelector('canvas')
     const ctx = canvas.getContext('2d')
     const dpr = canvas.width / canvas.clientWidth
+    // 手绘笔触在 r±2 内游走：按环带（角度 × 径向）采样，统计非白（笔触覆盖）像素
     let hits = 0
-    for (let i = 0; i < 48; i++) {
-      const a = (i / 48) * Math.PI * 2
-      const x = Math.round((cx + Math.cos(a) * r) * dpr)
-      const y = Math.round((cy + Math.sin(a) * r) * dpr)
-      const px = ctx.getImageData(x, y, 1, 1).data
-      if (px[2] > 100 && px[2] > px[0] + 20 && px[0] < 180 && px[3] > 100) hits++
+    let samples = 0
+    for (let i = 0; i < 36; i++) {
+      const a = (i / 36) * Math.PI * 2
+      for (let k = -2; k <= 2; k += 1) {
+        const rr = r + k * 0.9
+        const x = Math.round((cx + Math.cos(a) * rr) * dpr)
+        const y = Math.round((cy + Math.sin(a) * rr) * dpr)
+        const px = ctx.getImageData(x, y, 1, 1).data
+        samples++
+        if (px[3] > 100 && (px[0] < 235 || px[1] < 235 || px[2] < 235)) hits++
+      }
     }
-    return { hits, cx: Math.round(cx), cy: Math.round(cy), r: Math.round(r * 10) / 10 }
+    return { hits, samples, cx: Math.round(cx), cy: Math.round(cy), r: Math.round(r * 10) / 10 }
   }, { hour, day, mode })
 }
 
 const maskInfo = () => page.evaluate(() => {
   const el = document.querySelector('.day-picker-mask')
+  const stroke = document.querySelector('.day-picker-stroke')
   const cs = getComputedStyle(el)
   const ty = cs.transform && cs.transform !== 'none' ? parseFloat(cs.transform.split(',')[5]) || 0 : 0
-  return { ty, opacity: Number(cs.opacity), rowH: el.getBoundingClientRect().height }
+  return { ty, opacity: Number(getComputedStyle(stroke).opacity), rowH: el.getBoundingClientRect().height }
 })
 
 try {
@@ -105,17 +114,17 @@ try {
 
   // ---------- 圆环：默认标注全周最大格 ----------
   const rDefault = await probeRing(globalPeak.hour, globalPeak.day, 'abs')
-  check('未选中日期时圆环标出全周峰值格', rDefault.hits >= 8, rDefault)
+  check('未选中日期时圆环标出全周峰值格', rDefault.hits >= 24, rDefault)
   await page.screenshot({ path: resolve(OUT, 'ring-default.png'), clip: await page.$eval('[data-template="F10"]', el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } }) })
 
   // ---------- 选中日期：圆环自动标注当天峰值时段 ----------
   await clickDay(2)
   await sleep(650)
   const rA = await probeRing(peakA[0], peakA[1], 'abs')
-  check('选中日期后圆环标出当天峰值时段', rA.hits >= 8, { peakA, probe: rA })
+  check('选中日期后圆环标出当天峰值时段', rA.hits >= 24, { peakA, probe: rA })
   if (peakA[0] !== globalPeak.hour || peakA[1] !== globalPeak.day) {
     const rOld = await probeRing(globalPeak.hour, globalPeak.day, 'abs')
-    check('圆环离开全周峰值格（跟随选中日期）', rOld.hits <= 4, rOld)
+    check('圆环离开全周峰值格（跟随选中日期）', rOld.hits <= 8, rOld)
   }
 
   // ---------- 遮罩层：出现并停在对应日期行 ----------
@@ -128,36 +137,47 @@ try {
   check('选中日期有选中动画', animName.includes('day-select-pop'), animName)
   await page.screenshot({ path: resolve(OUT, 'ring-day2.png'), clip: await page.$eval('[data-template="F10"]', el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } }) })
 
-  // ---------- 切换日期：遮罩层应平滑移动（逐帧轨迹） ----------
+  // ---------- 切换日期：旧标注消失后在新日期重绘（不做位移） ----------
   const trace = await page.evaluate(async targetDay => {
-    const el = document.querySelector('.day-picker-mask')
+    const mask = document.querySelector('.day-picker-mask')
+    const stroke = document.querySelector('.day-picker-stroke')
     const readY = () => {
-      const m = getComputedStyle(el).transform
+      const m = getComputedStyle(mask).transform
       return m && m !== 'none' ? parseFloat(m.split(',')[5]) || 0 : 0
     }
-    const ys = [readY()]
+    const samples = []
+    const record = () => samples.push({
+      ty: readY(),
+      opacity: Number(getComputedStyle(stroke).opacity),
+      dash: parseFloat(getComputedStyle(stroke).strokeDashoffset) || 0
+    })
+    record()
     document.querySelectorAll('.day-button')[6 - targetDay].click()
     const t0 = performance.now()
-    while (performance.now() - t0 < 470) {
-      ys.push(readY())
+    while (performance.now() - t0 < 820) {
+      record()
       await new Promise(r => requestAnimationFrame(r))
     }
-    return ys
+    return samples
   }, 5)
-  const traceStart = trace[0]
-  const traceEnd = trace[trace.length - 1]
-  const lo = Math.min(traceStart, traceEnd)
-  const hi = Math.max(traceStart, traceEnd)
-  const midCount = trace.filter(y => y > lo + 1 && y < hi - 1).length
-  const distinct = new Set(trace.map(y => y.toFixed(1))).size
-  check('切换日期遮罩层有移动动画', midCount >= 3 && distinct >= 4, { traceStart: Math.round(traceStart), traceEnd: Math.round(traceEnd), midCount, distinct })
+  const distinctTy = new Set(trace.map(s => s.ty.toFixed(1))).size
+  const minOpacity = Math.min(...trace.map(s => s.opacity))
+  const dashValues = trace.map(s => s.dash)
+  const dashTo = dashValues[dashValues.length - 1]
+  const firstHidden = trace.findIndex(s => s.opacity < 0.15)
+  const redraw = trace.slice(Math.max(0, firstHidden))
+  const sweepDistinct = new Set(redraw.map(s => s.dash.toFixed(2))).size
+  check('切换日期不做位移（直接落位）', distinctTy <= 2, { distinctTy })
+  check('旧标注先消失', minOpacity < 0.12, { minOpacity })
+  check('新下划线从头划出并收笔', Math.max(...dashValues) > 0.85 && dashTo < 0.06 && sweepDistinct >= 8, { maxDash: Math.round(Math.max(...dashValues) * 100) / 100, dashTo: Math.round(dashTo * 100) / 100, sweepDistinct })
+  check('先消失后重绘', firstHidden >= 0 && trace.findIndex(s => s.dash > 0.5) > firstHidden, { firstHidden })
   await sleep(250)
 
   const rB = await probeRing(peakB[0], peakB[1], 'abs')
-  check('切换日期后圆环跟随到新日期峰值', rB.hits >= 8, { peakB, probe: rB })
+  check('切换日期后圆环跟随到新日期峰值', rB.hits >= 24, { peakB, probe: rB })
   if (peakA[0] !== peakB[0] || peakA[1] !== peakB[1]) {
     const rAOld = await probeRing(peakA[0], peakA[1], 'abs')
-    check('圆环离开上一日期峰值格', rAOld.hits <= 4, rAOld)
+    check('圆环离开上一日期峰值格', rAOld.hits <= 8, rAOld)
   }
   await page.screenshot({ path: resolve(OUT, 'ring-day5.png'), clip: await page.$eval('[data-template="F10"]', el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } }) })
 
@@ -165,7 +185,7 @@ try {
   await page.evaluate(() => [...document.querySelectorAll('.seg__item')].find(b => b.textContent.trim() === '占当天')?.click())
   await sleep(500)
   const rShare = await probeRing(peakB[0], peakB[1], 'share')
-  check('占当天视图圆环仍标注当天峰值', rShare.hits >= 8, rShare)
+  check('占当天视图圆环仍标注当天峰值', rShare.hits >= 24, rShare)
   await page.evaluate(() => [...document.querySelectorAll('.seg__item')].find(b => b.textContent.trim() === '绝对值')?.click())
   await sleep(400)
 

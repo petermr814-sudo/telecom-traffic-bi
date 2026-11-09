@@ -56,16 +56,20 @@ export function tickRowsOption(rows: TickRow[], unit: number) {
 }
 
 export interface HeatAnim {
-  /** 遮罩行（日期下标，0 在底部），可为小数以补间滑动 */
+  /** 标注行（日期下标，0 在底部）；切换日期时直接落位，不做滑动 */
   maskRow: number
-  /** 遮罩不透明度 0–1，未选中日期时为 0 */
-  maskAlpha: number
-  /** 圆环中心的小时下标，可为小数 */
+  /** 圆环中心的小时下标 */
   ringH: number
-  /** 圆环中心的日期下标，可为小数 */
+  /** 圆环中心的日期下标 */
   ringD: number
   /** 圆环半径系数，等于峰值点 sqrt(value / max) */
   ringVF: number
+  /** 笔触不透明度：0=消失，1=完全呈现（旧标注淡出、新标注淡入的载体） */
+  ink: number
+  /** 划线进度 0→1：下划线与峰值画圈共用同一进度，保证两段绘制同步 */
+  draw: number
+  /** 1=有选中日期（下划线与行内圆点变淡仅在此时生效） */
+  selected: number
 }
 
 /** 类目轴 band 坐标线性插值，避免依赖 api.coord 对小数下标的支持 */
@@ -84,6 +88,49 @@ function heatBandXY(api: any, hour: number, row: number, lastH: number, lastD: n
   const x1 = api.coord([h1, d0])[0]
   const y1 = api.coord([h0, d1])[1]
   return [x0 + (x1 - x0) * (hour - h0), y0 + (y1 - y0) * (row - d0)] as const
+}
+
+/** 确定性手绘抖动：同一输入恒定输出，逐帧重绘时笔触不闪烁 */
+export function handWobble(t: number, seed: number) {
+  return Math.sin(t * .9 + seed) * .62 + Math.sin(t * 2.3 + seed * 1.7) * .28 + Math.sin(t * 4.7 + seed * 2.9) * .1
+}
+
+interface HandPath {
+  points: number[][]
+  length: number
+}
+
+function pathLength(points: number[][], closed = false) {
+  let length = 0
+  for (let i = 1; i < points.length; i++) length += Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1])
+  if (closed && points.length > 1) {
+    const first = points[0]
+    const last = points[points.length - 1]
+    length += Math.hypot(first[0] - last[0], first[1] - last[1])
+  }
+  return length
+}
+
+function handLinePoints(x0: number, x1: number, y: number, seed: number, amp = 1.15): HandPath {
+  const points: number[][] = []
+  const n = Math.max(8, Math.round((x1 - x0) / 26))
+  for (let i = 0; i <= n; i++) {
+    const x = x0 + ((x1 - x0) * i) / n
+    points.push([x, y + handWobble(i * 1.31, seed) * amp])
+  }
+  return { points, length: pathLength(points) }
+}
+
+/** 闭合手绘圆：自顶部起笔顺时针画圈；抖动取角度整数谐波，首尾自然衔接 */
+function handRingPoints(cx: number, cy: number, r: number, seed: number, amp = 1.2): HandPath {
+  const points: number[][] = []
+  const n = 40
+  for (let i = 0; i < n; i++) {
+    const a = -Math.PI / 2 + (i / n) * Math.PI * 2
+    const rr = r + (Math.sin(a * 3 + seed) * .62 + Math.sin(a * 7 + seed * 1.7) * .28 + Math.sin(a * 11 + seed * 2.9) * .1) * amp
+    points.push([cx + Math.cos(a) * rr, cy + Math.sin(a) * rr])
+  }
+  return { points, length: pathLength(points, true) }
 }
 
 export function dotHeatOption(values: number[][], hours: string[], days: string[], format: (value: number) => string, anim: HeatAnim) {
@@ -109,18 +156,32 @@ export function dotHeatOption(values: number[][], hours: string[], days: string[
         const width = Math.abs(api.size([1, 0])[0]), height = Math.abs(api.size([0, 1])[1])
         const maxR = Math.min(width * .38, height * .36)
         const radius = maxR * Math.sqrt(value / max)
-        const opacity = 1 - .55 * anim.maskAlpha * Math.min(1, Math.abs(d - anim.maskRow))
-        // 子元素结构恒为 [rect, circle]（圆环固定追加在末位）：ECharts 按下标复用元素，
-        // 若某帧缺项导致类型错位，copyElement 会把圆形的 r/cx/cy 并入矩形形状，
-        // 因此矩形必须显式带 r: 0 抵消污染
-        const maskY = heatBandY(api, anim.maskRow, lastD)
+        const opacity = 1 - .55 * anim.ink * anim.selected * Math.min(1, Math.abs(d - anim.maskRow))
+        // 子元素结构逐帧保持不变（普通格 [circle]，锚点格 [circle, polyline, polyline, polygon]）：
+        // ECharts 按下标复用元素，结构缺项导致类型错位时 copyElement 会把旧形状并进新元素
         const children: any[] = [
-          { type: 'rect', shape: { x: x - width / 2, y: maskY - height / 2, width, height, r: 0 }, style: { fill: anim.maskAlpha > 0 ? `rgba(51,78,172,${(.1 * anim.maskAlpha).toFixed(3)})` : 'transparent' } },
           { type: 'circle', shape: { cx: x, cy: y, r: value > 0 ? radius : 1 }, style: { fill: value > 0 ? api.visual('color') : '#dce3ec', opacity } },
         ]
         if (params.dataIndex === ringAnchor) {
+          // 手绘炭笔下划线与峰值画圈：dash 偏移按 draw 进度划出，两段共用同一进度即同步绘制
+          const baseY = heatBandY(api, anim.maskRow, lastD) + height / 2 - 1
+          const x0 = params.coordSys.x + 2
+          const x1 = params.coordSys.x + params.coordSys.width - 2
+          const ghost = handLinePoints(x0, x1, baseY + 1.9, 8.4)
+          const main = handLinePoints(x0, x1, baseY, 3.7)
           const [ringX, ringY] = heatBandXY(api, anim.ringH, anim.ringD, lastH, lastD)
-          children.push({ type: 'circle', shape: { cx: ringX, cy: ringY, r: maxR * anim.ringVF + 2.5 }, style: { fill: 'transparent', stroke: C.primary, lineWidth: 1, lineDash: [2, 2] } })
+          const ring = handRingPoints(ringX, ringY, maxR * anim.ringVF + 2.5, 5.2)
+          const strokeOf = (path: HandPath, lineWidth: number, alpha: number, gated = true) => ({
+            stroke: C.text, lineWidth, fill: 'none', lineCap: 'round', lineJoin: 'round',
+            opacity: alpha * anim.ink * (gated ? anim.selected : 1),
+            lineDash: [path.length, path.length], lineDashOffset: path.length * (1 - anim.draw),
+          })
+          children.push(
+            { type: 'polyline', shape: { points: ghost.points, smooth: 0 }, style: strokeOf(ghost, 1.1, .3) },
+            { type: 'polyline', shape: { points: main.points, smooth: 0 }, style: strokeOf(main, 2.2, .88) },
+            // 圆环不随选中门控：未选中日期时也标注全周峰值
+            { type: 'polygon', shape: { points: ring.points }, style: { ...strokeOf(ring, 1.35, .85, false), fill: 'transparent' } },
+          )
         }
         return { type: 'group', children }
       },

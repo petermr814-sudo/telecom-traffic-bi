@@ -34,7 +34,7 @@ export CHROME_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome
 | `node tools/map-verify.mjs` | 3D 地图聚焦、连续切城、范围联动、数据核对、搜索、返回、移动布局及离线交互；截图到 `docs/map-check/`，默认端口 5400，可用 SHOT_BASE 覆盖 |
 | `node tools/camera-motion-verify.mjs` | 实时镜头的朝向继承、切城速度连续性、帧率一致性、接管/减少动画与全部城市的视锥取景；无需启动浏览器 |
 | `node tools/page-transition-verify.mjs` | 页面切换动画：离开/进入的移动轨迹、二次贝塞尔缓动、透明度同步、残留清理与减少动态效果；截图到 `docs/layout-check/page-switch/` |
-| `node tools/mask-verify.mjs` | 时段页日期遮罩：滑动连续性、方向与终点、透明度同步、二次缓动轨迹拟合、减少动画偏好下仍可滑动；截图到 `docs/layout-check/mask-switch/` |
+| `node tools/mask-verify.mjs` | 时段页日期标注动画：选中/切换时旧下划线与峰值圈先消失、新标注重绘（下划线划出与画圈同步、不做位移）、减少动画偏好下直接呈现；截图到 `docs/layout-check/mask-switch/` |
 | `node tools/metrics-mask-verify.mjs` | 区域页指标切换胶囊：初始覆盖、滑动连续性、终点对齐、二次缓动轨迹拟合、减少动画偏好下仍可滑动；截图到 `docs/layout-check/metrics-mask/` |
 | `node tools/seg-mask-verify.mjs` | 分段控件（时间范围/制式筛选等）滑动胶囊：初始覆盖、滑向目标、二次缓动轨迹拟合、减少动画偏好下仍可滑动；截图到 `docs/layout-check/seg-mask/` |
 | `node tools/prepare-city-geo.mjs` | 从 DataV 更新演示数据覆盖的 60 座城市边界，仅资源更新时需要联网 |

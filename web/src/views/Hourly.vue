@@ -11,7 +11,7 @@ import { useAsync } from '@/lib/useAsync'
 import { api } from '@/api/client'
 import { fmtBytes, hourLabel, splitBytes } from '@/lib/format'
 import { axisLabel, C, gridBase, splitLine, tooltipBase } from '@/lib/chart'
-import { dotHeatOption, type HeatAnim } from '@/lib/chartTemplates'
+import { dotHeatOption, handWobble, type HeatAnim } from '@/lib/chartTemplates'
 import { downloadFile, toCsv, toast, ui } from '@/stores/ui'
 
 const selectedDay = ref<number | null>(null)
@@ -60,49 +60,107 @@ const ringTarget = computed(() => {
   const peakValue = points.find(point => point[0] === peakHour && point[1] === peakDay)?.[2] ?? 0
   return {
     maskRow: selectedDay.value ?? 0,
-    maskAlpha: selectedDay.value !== null ? 1 : 0,
     ringH: peakHour,
     ringD: peakDay,
     ringVF: Math.sqrt(peakValue / max),
+    selected: selectedDay.value !== null ? 1 : 0,
   }
 })
-// 遮罩行与圆环的补间状态：每帧写入触发热力图重绘，日期选择器遮罩同源同步
-const anim = reactive({ maskRow: 0, maskAlpha: 0, ringH: 0, ringD: 0, ringVF: 0 })
+// 标注动画状态：ink 控制「消失/浮现」，draw 控制「划出/画圈」进度（两者共用 → 同步），
+// 位置字段在重绘时直接落位。每帧写入触发热力图重绘，日期按钮笔触同源同步
+const anim = reactive<HeatAnim>({ maskRow: 0, ringH: 0, ringD: 0, ringVF: 0, ink: 0, draw: 0, selected: 0 })
 const pickerMaskStyle = computed(() => ({
   transform: `translateY(calc(${daily.value.length - 1 - anim.maskRow} * 100%))`,
-  opacity: String(anim.maskAlpha),
 }))
+const pickerStrokeStyle = computed(() => ({
+  opacity: String(anim.ink * anim.selected),
+  strokeDashoffset: String(1 - anim.draw),
+}))
+// 日期按钮的手绘炭笔笔触：双路径叠出铅笔质感，确定性抖动保证形状稳定
+function handStrokePath(width: number, baseY: number, seed: number, amp = 1.1) {
+  const n = 14
+  let d = ''
+  for (let i = 0; i <= n; i++) {
+    const x = (width * i) / n
+    const y = baseY + handWobble(i * 1.31, seed) * amp
+    d += `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)} `
+  }
+  return d.trim()
+}
+const pickerStrokeGhost = handStrokePath(94, 7.6, 8.4, 1.5)
+const pickerStrokeMain = handStrokePath(94, 5.4, 3.7, 1.5)
+// 实时读取系统偏好：运行中切换「减少动态效果」也能生效
+function prefersReducedMotion() {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
 let animRaf = 0
-let animInited = false
+let animToken = 0
+let animKey = ''
 
-// 二次缓动：前半段 2p²、后半段 1-2(1-p)²，等价于在 0.5 处拼接的两段二次贝塞尔，
-// 比三次缓出更「有存在感」，滑动两端都能明显感知
-function quadEaseInOut(p: number) {
-  return p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2
+function easeOutCubic(p: number) {
+  return 1 - (1 - p) ** 3
 }
 
-function tweenAnim(target: HeatAnim) {
+type AnimTarget = { maskRow: number; ringH: number; ringD: number; ringVF: number; selected: number }
+
+// 切换日期不做位移：旧下划线与峰值圈先淡出消失，随后在新日期落位，
+// 下划线划出与峰值画圈共用 draw 进度同步绘制
+function tweenAnim(target: AnimTarget) {
   cancelAnimationFrame(animRaf)
-  if (!animInited) {
-    Object.assign(anim, target)
-    animInited = true
+  const token = ++animToken
+  const place = () => {
+    anim.maskRow = target.maskRow
+    anim.ringH = target.ringH
+    anim.ringD = target.ringD
+    anim.ringVF = target.ringVF
+    anim.selected = target.selected
+    anim.draw = 0
+  }
+  const drawIn = () => {
+    if (token !== animToken) return
+    place()
+    const start = performance.now()
+    const step = (now: number) => {
+      if (token !== animToken) return
+      const eased = easeOutCubic(Math.min(1, (now - start) / 420))
+      anim.draw = eased
+      anim.ink = Math.min(1, eased * 3.5)
+      if (eased < 1) animRaf = requestAnimationFrame(step)
+    }
+    animRaf = requestAnimationFrame(step)
+  }
+  if (prefersReducedMotion()) {
+    place()
+    anim.draw = 1
+    anim.ink = 1
     return
   }
-  const from = { ...anim }
-  const start = performance.now()
-  const step = (now: number) => {
-    const progress = Math.min(1, (now - start) / 440)
-    const eased = quadEaseInOut(progress)
-    anim.maskRow = from.maskRow + (target.maskRow - from.maskRow) * eased
-    anim.maskAlpha = from.maskAlpha + (target.maskAlpha - from.maskAlpha) * eased
-    anim.ringH = from.ringH + (target.ringH - from.ringH) * eased
-    anim.ringD = from.ringD + (target.ringD - from.ringD) * eased
-    anim.ringVF = from.ringVF + (target.ringVF - from.ringVF) * eased
-    if (progress < 1) animRaf = requestAnimationFrame(step)
+  if (anim.ink > 0.02) {
+    const from = anim.ink
+    const start = performance.now()
+    const step = (now: number) => {
+      if (token !== animToken) return
+      const p = Math.min(1, (now - start) / 160)
+      anim.ink = from * (1 - easeOutCubic(p))
+      if (p < 1) animRaf = requestAnimationFrame(step)
+      else drawIn()
+    }
+    animRaf = requestAnimationFrame(step)
+  } else {
+    drawIn()
   }
-  animRaf = requestAnimationFrame(step)
 }
-watch(ringTarget, target => { if (target) tweenAnim(target) }, { immediate: true })
+watch(ringTarget, target => {
+  if (!target) return
+  // 仅数值刷新（如切换绝对值/占当天）时位置不变：直接同步半径系数，不重放绘制动画
+  const key = `${target.maskRow}|${target.ringH}|${target.ringD}|${target.selected}`
+  if (key === animKey) {
+    anim.ringVF = target.ringVF
+    return
+  }
+  animKey = key
+  tweenAnim(target)
+}, { immediate: true })
 const heatOption = computed(() => {
   const option = dotHeatOption(displayValues.value, hours, dayLabels.value, value => heatMode.value === 'abs' ? fmtBytes(value) : `${value.toFixed(2)}%`, { ...anim })
   option.grid = { left: 18, right: 18, top: 10, bottom: 30 }
@@ -187,10 +245,15 @@ onUnmounted(() => {
     <div v-if="heat.error.value" class="card error-card"><Icon name="alert" :size="22" /><div><strong>时段数据加载失败</strong><p>{{ heat.error.value }}</p></div><button class="btn" @click="heat.run">重试</button></div>
     <template v-else>
       <Panel class="weekly-panel" data-template="F10" title="周 × 小时流量热力图" :sub="`${dateSpan} · ${ui.region === 'all' ? '全国' : ui.region}`">
-        <template #actions><div class="seg" aria-label="热力图统计方式"><button class="seg__item" :class="{ 'is-active': heatMode === 'abs' }" @click="heatMode = 'abs'">绝对值</button><button class="seg__item" :class="{ 'is-active': heatMode === 'share' }" @click="heatMode = 'share'">占当天</button></div></template>
+        <template #actions><div v-seg-mask class="seg" aria-label="热力图统计方式"><button class="seg__item" :class="{ 'is-active': heatMode === 'abs' }" @click="heatMode = 'abs'">绝对值</button><button class="seg__item" :class="{ 'is-active': heatMode === 'share' }" @click="heatMode = 'share'">占当天</button></div></template>
         <div class="heatmap-explorer">
           <nav class="day-picker" aria-label="选择日期查看当天详情">
-            <div class="day-picker-mask" aria-hidden="true" :style="pickerMaskStyle" />
+            <div class="day-picker-mask" aria-hidden="true" :style="pickerMaskStyle">
+              <svg class="day-picker-stroke" viewBox="0 0 94 12" preserveAspectRatio="none" :style="pickerStrokeStyle">
+                <path :d="pickerStrokeGhost" pathLength="1" class="day-picker-stroke__ghost" />
+                <path :d="pickerStrokeMain" pathLength="1" class="day-picker-stroke__ink" />
+              </svg>
+            </div>
             <button v-for="day in dayButtons" :key="day.index" class="day-button" :class="{ 'is-selected': selectedDay === day.index }" :aria-pressed="selectedDay === day.index" :aria-label="`查看 ${day.date.format('YYYY-MM-DD')} 的统计详情`" @click="chooseDay(day.index)"><strong>{{ day.date.format('MM-DD') }}</strong><span>{{ weekdayLabels[day.date.day()] }}</span><Icon name="chevron-right" :size="12" /></button>
           </nav>
           <BaseChart :option="heatOption" :loading="heat.loading.value && !heat.data.value" height="360px" :replace-merge="['series', 'visualMap']" @chart-click="onHeatClick" />
@@ -209,7 +272,7 @@ onUnmounted(() => {
         <div class="metric-strip"><span>日均小时流量<strong>{{ fmtBytes(selected.average) }}</strong></span><span>峰均比<strong>{{ (selected.peak / Math.max(1, selected.average)).toFixed(2) }}×</strong></span></div>
         <div class="day-charts">
           <Panel data-chart="day-trend" :data-template="chartType === 'bar' ? 'G12' : 'F2'" title="当天 24 小时流量" :sub="`${selected.date.format('MM月DD日')} · 每小时独立读数`">
-            <template #actions><div class="seg seg--sm"><button class="seg__item" :class="{ 'is-active': chartType === 'bar' }" @click="chartType = 'bar'">柱状</button><button class="seg__item" :class="{ 'is-active': chartType === 'line' }" @click="chartType = 'line'">折线</button></div></template>
+            <template #actions><div v-seg-mask class="seg seg--sm"><button class="seg__item" :class="{ 'is-active': chartType === 'bar' }" @click="chartType = 'bar'">柱状</button><button class="seg__item" :class="{ 'is-active': chartType === 'line' }" @click="chartType = 'line'">折线</button></div></template>
             <div class="chart-controls"><button v-if="previous" class="control-toggle" :class="{ 'is-active': ui.compare }" :aria-pressed="ui.compare" @click="ui.compare = !ui.compare"><span />对比前一天</button><button class="control-toggle" :class="{ 'is-active': showAvg }" :aria-pressed="showAvg" @click="showAvg = !showAvg"><span />日均线</button></div>
             <BaseChart :option="trendOption" height="280px" :replace-merge="['series']" />
             <p v-if="showAvg" class="chart-note">橙色虚线：当天小时均值 {{ fmtBytes(selected.average) }}</p>
@@ -217,7 +280,7 @@ onUnmounted(() => {
           <Panel data-template="G4" title="当天时段构成" sub="全部时段合计 100%"><ShareWaffle :items="periods" /></Panel>
         </div>
         <Disclosure title="查看当天 24 小时明细" sub="按流量排名或时间顺序逐项核对">
-          <div class="detail-table-head"><span>{{ selected.date.format('YYYY-MM-DD') }} · 24 条读数</span><div class="seg seg--sm"><button class="seg__item" :class="{ 'is-active': rankSort === 'flow' }" @click="rankSort = 'flow'">按流量</button><button class="seg__item" :class="{ 'is-active': rankSort === 'hour' }" @click="rankSort = 'hour'">按时间</button></div></div>
+          <div class="detail-table-head"><span>{{ selected.date.format('YYYY-MM-DD') }} · 24 条读数</span><div v-seg-mask class="seg seg--sm"><button class="seg__item" :class="{ 'is-active': rankSort === 'flow' }" @click="rankSort = 'flow'">按流量</button><button class="seg__item" :class="{ 'is-active': rankSort === 'hour' }" @click="rankSort = 'hour'">按时间</button></div></div>
           <div class="table-wrap"><table class="table"><thead><tr><th>小时</th><th class="num">流量</th><th class="num">占当天</th></tr></thead><tbody><tr v-for="row in ranked" :key="row.hour"><td>{{ hourLabel(row.hour) }}</td><td class="num">{{ fmtBytes(row.value) }}</td><td class="num">{{ row.share.toFixed(1) }}%</td></tr></tbody></table></div>
         </Disclosure>
       </section>
@@ -236,14 +299,28 @@ onUnmounted(() => {
   right: 0;
   top: 10px;
   height: calc((100% - 40px) / 7);
-  border: 1px solid var(--primary-border);
-  border-radius: 8px;
-  background: var(--primary-soft);
-  box-shadow: 0 3px 10px rgba(51, 78, 172, 0.16);
   will-change: transform;
   pointer-events: none;
   z-index: 0;
 }
+.day-picker-stroke {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -1px;
+  height: 12px;
+  overflow: visible;
+  stroke-dasharray: 1;
+}
+.day-picker-stroke path {
+  fill: none;
+  stroke: var(--text);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.day-picker-stroke__ink { stroke-width: 2.2; opacity: .88; }
+.day-picker-stroke__ghost { stroke-width: 1.1; opacity: .3; }
 .day-button { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr 16px; align-content: center; padding: 5px 12px; text-align: left; border: 1px solid transparent; border-radius: 8px; }
 .day-button strong { font-size: 13px; font-weight: 550; color: var(--text-2); transition: color .25s ease; }
 .day-button > span { font-size: 10px; color: var(--text-3); margin-top: 1px; }
@@ -251,8 +328,8 @@ onUnmounted(() => {
 .day-button:hover { background: var(--surface-2); }
 .day-button.is-selected { animation: day-select-pop .32s cubic-bezier(.34, 1.4, .64, 1); }
 .day-button.is-selected:hover { background: transparent; }
-.day-button.is-selected strong { color: var(--primary); }
-.day-button.is-selected > svg { opacity: 1; color: var(--primary); }
+.day-button.is-selected strong { color: var(--text); }
+.day-button.is-selected > svg { opacity: 1; color: var(--text); }
 @keyframes day-select-pop {
   0% { transform: scale(.965); }
   55% { transform: scale(1.012); }

@@ -2,6 +2,8 @@ import puppeteer from 'puppeteer-core'
 import { mkdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 
+// 标注动画验收：选中/切换日期时，旧下划线与峰值圈先消失，再在新日期同步重绘
+// （下划线划出 + 峰值画圈），不产生位移滑动。用法：开发服启动后 node tools/mask-verify.mjs
 const base = process.env.SHOT_BASE || 'http://127.0.0.1:5178/'
 const out = resolve('../docs/layout-check/mask-switch')
 mkdirSync(out, { recursive: true })
@@ -23,8 +25,6 @@ const check = (name, ok, detail = '') => {
   console.log(ok ? 'PASS' : 'FAIL', name, JSON.stringify(detail))
 }
 
-// 二次缓动参考值：p<0.5 ? 2p² : 1-2(1-p)²
-const quadEase = p => (p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2)
 const rowH = (360 - 40) / 7 // 遮罩行高，同 .day-picker 布局
 const tyOf = transform => {
   const m = transform.match(/matrix\([^)]*\)/)
@@ -32,15 +32,21 @@ const tyOf = transform => {
   return Number(m[0].match(/[-+]?\d+(\.\d+)?/g).map(Number)[5])
 }
 
-async function clickDayAndSample(index, ms = 700) {
-  const sampler = page.evaluate(async (duration) => {
+async function clickDayAndSample(index, ms = 820) {
+  const sampler = page.evaluate(async duration => {
     const samples = []
     const start = performance.now()
     await new Promise(resolve => {
       const tick = () => {
         const mask = document.querySelector('.day-picker-mask')
+        const stroke = document.querySelector('.day-picker-stroke')
         const s = getComputedStyle(mask)
-        samples.push({ t: performance.now() - start, transform: s.transform, opacity: s.opacity })
+        samples.push({
+          t: performance.now() - start,
+          transform: s.transform,
+          opacity: Number(getComputedStyle(stroke).opacity),
+          dash: parseFloat(getComputedStyle(stroke).strokeDashoffset) || 0
+        })
         if (performance.now() - start < duration) requestAnimationFrame(tick)
         else resolve()
       }
@@ -48,7 +54,7 @@ async function clickDayAndSample(index, ms = 700) {
     })
     return samples
   }, ms)
-  await page.evaluate((i) => {
+  await page.evaluate(i => {
     document.querySelectorAll('.day-button')[i].click()
   }, index)
   return sampler
@@ -56,47 +62,54 @@ async function clickDayAndSample(index, ms = 700) {
 
 try {
   await page.goto(`${base}#/hourly`, { waitUntil: 'networkidle0' })
-  await page.waitForFunction(() => document.querySelector('.day-button'))
-  await sleep(600)
+  await page.waitForFunction(() => Boolean(document.querySelector('[data-template="F10"] .chart-box')?.__chart))
+  await sleep(700)
 
-  // 点击第 4 个日期按钮（daily[3]）：遮罩应从 600% 滑到 300%
-  const samples = await clickDayAndSample(3)
-  const rows = samples.map(s => ({ t: s.t, ty: tyOf(s.transform), opacity: s.opacity }))
-  const active = rows.filter(s => s.ty !== null)
-  const distinct = new Set(active.map(s => Math.round(s.ty * 10))).size
+  // ---------- 首次选中（第 4 个按钮 = day 3）：下划线与画圈同步划出 ----------
+  const first = await clickDayAndSample(3)
+  const firstRows = first.map(s => ({ t: s.t, ty: tyOf(s.transform), opacity: s.opacity, dash: s.dash }))
+  const firstSweep = new Set(firstRows.filter(s => s.dash > 0.02).map(s => s.dash.toFixed(2))).size
+  const firstEnd = firstRows[firstRows.length - 1]
+  check('选中日期从头划出下划线', Math.max(...firstRows.map(s => s.dash)) > 0.85 && firstEnd.dash < 0.06 && firstSweep >= 8,
+    { maxDash: Math.round(Math.max(...firstRows.map(s => s.dash)) * 100) / 100, dashTo: Math.round(firstEnd.dash * 100) / 100, firstSweep })
+  check('划出结束笔触完整呈现', firstEnd.opacity > 0.95, firstEnd.opacity)
+  check('落位在选中日期行', Math.abs(firstEnd.ty - 3 * rowH) < 3, firstEnd.ty)
 
-  check('遮罩有连续位移动画', distinct >= 20, `${distinct} 个不同位置`)
-  check('位移方向正确（向上滑向选中行）', active[0].ty > active[active.length - 1].ty, `${active[0].ty} -> ${active[active.length - 1].ty}`)
-  check('终点停在目标行', Math.abs(active[active.length - 1].ty - 3 * rowH) < 3, active[active.length - 1].ty)
-  check('透明度同步淡入', active[0].opacity !== '1' && active[active.length - 1].opacity === '1', `${active[0].opacity} -> ${active[active.length - 1].opacity}`)
-
-  // 二次缓动轨迹形状检验：点击→首帧存在几十 ms 的启动延迟，且随帧率抖动，
-  // 因此用「采样轨迹 vs 理论缓动曲线」做带自由偏移 Δ 的最小误差拟合，
-  // Δ 落在合理范围且拟合误差很小即证明轨迹就是 quadEase 的形状。
-  const fromTy = 6 * rowH
-  const toTy = 3 * rowH
-  let best = { delta: 0, err: Infinity }
-  for (let delta = 0; delta <= 100; delta += 2) {
-    let sum = 0, n = 0
-    for (const s of active) {
-      const p = Math.min(1, Math.max(0, (s.t - delta) / 440))
-      const expect = fromTy + (toTy - fromTy) * quadEase(p)
-      sum += Math.abs(s.ty - expect); n++
-    }
-    const err = sum / n
-    if (err < best.err) best = { delta, err }
-  }
-  check('滑动轨迹符合二次缓动曲线', best.err < 4 && best.delta >= 0 && best.delta <= 80, best)
-  await sleep(300)
+  // ---------- 切换日期（第 2 个按钮 = 第 1 行）：先消失，再落位重绘 ----------
+  const sw = await clickDayAndSample(1)
+  const swRows = sw.map(s => ({ t: s.t, ty: tyOf(s.transform), opacity: s.opacity, dash: s.dash }))
+  const distinctTy = new Set(swRows.map(s => s.ty.toFixed(1))).size
+  const minOpacity = Math.min(...swRows.map(s => s.opacity))
+  const swEnd = swRows[swRows.length - 1]
+  const firstHidden = swRows.findIndex(s => s.opacity < 0.15)
+  const redraw = swRows.slice(Math.max(0, firstHidden))
+  const sweepDistinct = new Set(redraw.map(s => s.dash.toFixed(2))).size
+  check('切换日期不做位移（直接落位）', distinctTy <= 2, { distinctTy })
+  check('旧下划线与峰值圈先消失', minOpacity < 0.12, { minOpacity: Math.round(minOpacity * 100) / 100 })
+  check('新标注重新划出（同步绘制）', Math.max(...swRows.map(s => s.dash)) > 0.85 && swEnd.dash < 0.06 && sweepDistinct >= 8,
+    { maxDash: Math.round(Math.max(...swRows.map(s => s.dash)) * 100) / 100, dashTo: Math.round(swEnd.dash * 100) / 100, sweepDistinct })
+  check('先消失后重绘', firstHidden >= 0 && swRows.findIndex(s => s.dash > 0.5) > firstHidden, { firstHidden })
+  check('重绘终点停在新日期行', Math.abs(swEnd.ty - 1 * rowH) < 3, swEnd.ty)
+  await sleep(200)
   await page.screenshot({ path: resolve(out, 'mask-selected.png') })
 
-  // 系统「减少动画」开启时仍播放滑动（本次修复：遮罩不再因该偏好直接跳变）
+  // ---------- 减少动态效果：直接呈现最终态 ----------
   await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
   await sleep(80)
-  const reducedSamples = await clickDayAndSample(1)
-  const reducedActive = reducedSamples.map(s => tyOf(s.transform)).filter(v => v !== null)
-  const reducedDistinct = new Set(reducedActive.map(v => Math.round(v * 10))).size
-  check('减少动画偏好下仍平滑滑动', reducedDistinct >= 20, `${reducedDistinct} 个不同位置`)
+  await page.evaluate(() => {
+    document.querySelectorAll('.day-button')[4].click()
+  })
+  await sleep(80)
+  const reduced = await page.evaluate(() => {
+    const mask = document.querySelector('.day-picker-mask')
+    const stroke = document.querySelector('.day-picker-stroke')
+    return {
+      ty: parseFloat(getComputedStyle(mask).transform.split(',')[5]) || 0,
+      opacity: Number(getComputedStyle(stroke).opacity),
+      dash: parseFloat(getComputedStyle(stroke).strokeDashoffset) || 0
+    }
+  })
+  check('减少动态效果下直接呈现最终态', reduced.opacity > 0.95 && reduced.dash < 0.06 && Math.abs(reduced.ty - 4 * rowH) < 3, reduced)
 
   check('浏览器无错误', errors.length === 0, errors)
   console.log(`SUMMARY: ${results.filter(r => r.ok).length}/${results.length} passed`)
