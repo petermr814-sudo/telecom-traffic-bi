@@ -271,16 +271,18 @@ onUnmounted(() => {
     <Panel class="cells-table" title="小区清单" :sub="`${filtered.length} 个小区 · 点击行查看详情`" :loading="loading && !data" flush>
       <template #actions>
         <div class="filters">
-          <div class="search">
-            <Icon name="search" :size="14" />
-            <input v-model="q" v-type-reveal class="input" placeholder="搜索小区 / 城市 / 编号" aria-label="搜索小区" />
+          <div class="filter-cluster">
+            <div class="search">
+              <Icon name="search" :size="14" />
+              <input v-model="q" v-type-reveal class="input" placeholder="搜索小区 / 城市 / 编号" aria-label="搜索小区" />
+            </div>
+            <div v-seg-mask class="seg seg--sm">
+              <button class="seg__item" :class="{ 'is-active': gen === 'all' }" @click="gen = 'all'">全部</button>
+              <button class="seg__item" :class="{ 'is-active': gen === '5G' }" @click="gen = '5G'">5G</button>
+              <button class="seg__item" :class="{ 'is-active': gen === '4G' }" @click="gen = '4G'">4G</button>
+            </div>
+            <Select v-model="status" class="select" size="sm" :options="statusOptions" aria-label="按状态筛选" />
           </div>
-          <div v-seg-mask class="seg seg--sm">
-            <button class="seg__item" :class="{ 'is-active': gen === 'all' }" @click="gen = 'all'">全部</button>
-            <button class="seg__item" :class="{ 'is-active': gen === '5G' }" @click="gen = '5G'">5G</button>
-            <button class="seg__item" :class="{ 'is-active': gen === '4G' }" @click="gen = '4G'">4G</button>
-          </div>
-          <Select v-model="status" class="select" size="sm" :options="statusOptions" aria-label="按状态筛选" />
           <button class="btn btn--soft" @click="expandOpen = true">
             <Icon name="sparkles" :size="14" />
             生成扩容建议
@@ -409,13 +411,17 @@ onUnmounted(() => {
 .legend { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; color: var(--text-3); margin-left: 6px; }
 .legend i { width: 7px; height: 7px; border-radius: 2px; display: block; }
 
-.filters { display: flex; align-items: center; gap: 8px; }
-.search { position: relative; }
+.filters { display: flex; align-items: center; gap: 10px; width: 100%; flex-wrap: wrap; }
+.filter-cluster { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.search { position: relative; flex: 0 0 260px; }
 /* v-type-reveal 会把 input 包进 position: relative 的容器，不提升层级时 input 背景会盖住图标 */
 .search svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); z-index: 1; pointer-events: none; color: var(--text-3); }
-.search .input { width: 200px; height: 30px; padding-left: 28px; font-size: 12px; }
-.select { width: 100px; }
-.seg--sm .seg__item { height: 30px; padding: 0 9px; font-size: 11.5px; }
+.search .input { width: 100%; height: 34px; padding-left: 30px; font-size: 12px; border-radius: 9px; }
+.search svg { left: 10px; }
+.select { width: 104px; }
+.filters :deep(.sel--sm .sel__trigger) { height: 34px; padding: 0 10px; border-radius: 9px; }
+.filters .seg--sm { height: 34px; }
+.filters .seg--sm .seg__item { height: 26px; padding: 0 11px; font-size: 12px; }
 
 .cell-name { font-size: 12px; font-weight: 500; color: var(--text); }
 .cell-id { font-size: 9.5px; color: var(--text-3); margin-top: 1px; }
@@ -504,11 +510,12 @@ onUnmounted(() => {
 }
 .cells-table :deep(.panel-head) { flex-direction: column; align-items: stretch; }
 .cells-table :deep(.panel-actions) { width: 100%; }
-.filters { width: 100%; flex-wrap: wrap; gap: 10px; }
 .filters > .btn { margin-left: auto; }
-.search { flex: 1; min-width: 180px; max-width: 320px; }
-.search .input { width: 100%; }
-@media (max-width: 680px) { .filters > .btn { margin-left: 0; } .search { max-width: none; flex-basis: 100%; } }
+@media (max-width: 680px) {
+  .filters > .btn { margin-left: 0; }
+  .filter-cluster { width: 100%; flex-wrap: wrap; }
+  .search { flex: 1 1 100%; }
+}
 
 .scatter-panel { position: relative; isolation: isolate; overflow: hidden; }
 .scatter-panel :deep(.panel-head) { flex-wrap: wrap; align-items: flex-start; }
