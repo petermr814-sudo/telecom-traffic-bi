@@ -33,14 +33,15 @@ const icons: Record<Toast['type'], string> = {
 .toast-stack {
   position: fixed;
   left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
+  /* 顶栏高 72px：12px 顶部留白 + 48px 单条 Toast ≈ 顶栏垂直居中；多条向下排 */
+  top: 12px;
+  transform: translateX(-50%);
   z-index: 200;
   display: flex;
   flex-direction: column;
   gap: 8px;
   width: min(380px, calc(100vw - 32px));
-  max-height: calc(100vh - 32px);
+  max-height: calc(100vh - 24px);
   overflow-y: auto;
   pointer-events: none;
   scrollbar-width: none;
@@ -126,7 +127,7 @@ const icons: Record<Toast['type'], string> = {
 .toast-enter-from,
 .toast-leave-to {
   opacity: 0;
-  transform: translateY(8px) scale(0.97);
+  transform: translateY(-8px) scale(0.97);
 }
 
 .toast-move {
