@@ -27,11 +27,13 @@ function onKeydown(e: KeyboardEvent) {
   if (isTyping(e)) return
 
   if (e.key === 'Escape') {
-    ui.infoOpen = false
-    ui.alertsOpen = false
-    ui.settingsOpen = false
-    ui.shortcutsOpen = false
-    ui.cellDetail = null
+    // 只关最上层浮层：退出告警抽屉时不要把底层的信息栏一起收掉
+    if (ui.alertsOpen) { ui.alertsOpen = false; return }
+    if (ui.settingsOpen) { ui.settingsOpen = false; return }
+    if (ui.shortcutsOpen) { ui.shortcutsOpen = false; return }
+    if (ui.cellDetail) { ui.cellDetail = null; return }
+    if (ui.commandOpen) { ui.commandOpen = false; return }
+    if (ui.infoOpen) { ui.infoOpen = false; return }
     return
   }
   if (e.key === '?') {

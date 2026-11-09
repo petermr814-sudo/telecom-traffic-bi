@@ -27,7 +27,12 @@ function close() {
   ui.infoOpen = false
 }
 function run(fn: () => void) {
+  // 页面级操作（刷新/导出/打印等）执行后收起面板
   close()
+  fn()
+}
+function openOver(fn: () => void) {
+  // 抽屉/弹窗类操作：面板保留在下方，退出浮层后面板仍在
   fn()
 }
 function onRefresh() {
@@ -75,38 +80,42 @@ async function copyLink() {
             <span>运行状态</span>
             <Icon class="info-section__chevron" name="chevron-down" :size="14" />
           </button>
-          <div v-if="statusOpen" class="info-section__body">
-            <div class="info-row">
-              <span class="info-row__label"><Icon name="server" :size="13" />数据模式</span>
-              <span class="info-row__value"><i class="dot dot--green" />{{ modeLabel }}</span>
+          <div class="info-section__collapse" :class="{ 'is-open': statusOpen }">
+            <div class="info-section__inner">
+              <div class="info-section__body">
+                <div class="info-row">
+                  <span class="info-row__label"><Icon name="server" :size="13" />数据模式</span>
+                  <span class="info-row__value"><i class="dot dot--green" />{{ modeLabel }}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-row__label"><Icon name="globe" :size="13" />当前区域</span>
+                  <button class="info-row__value info-row__value--btn" @click="regionOpen = !regionOpen">
+                    {{ regionLabel }}<Icon name="chevron-down" :size="12" />
+                  </button>
+                </div>
+                <div v-if="regionOpen" class="region-grid" role="listbox">
+                  <button
+                    v-for="r in REGIONS"
+                    :key="r"
+                    class="region-grid__item"
+                    :class="{ 'is-selected': ui.region === r }"
+                    role="option"
+                    :aria-selected="ui.region === r"
+                    @click="ui.region = r; regionOpen = false; close()"
+                  >
+                    {{ r === 'all' ? '全国' : r }}
+                  </button>
+                </div>
+                <div class="info-row">
+                  <span class="info-row__label"><Icon name="clock" :size="13" />数据更新</span>
+                  <span class="info-row__value">{{ ui.lastUpdated === '—' ? '演示数据' : `更新于 ${ui.lastUpdated}` }}</span>
+                </div>
+                <button class="info-row" @click="openOver(() => { ui.alertsOpen = true })">
+                  <span class="info-row__label"><Icon name="bell" :size="13" />待处理告警</span>
+                  <span class="info-row__value"><b v-if="pendingAlerts" class="info-badge num">{{ pendingAlerts }}</b><span v-else class="info-ok">暂无</span></span>
+                </button>
+              </div>
             </div>
-            <div class="info-row">
-              <span class="info-row__label"><Icon name="globe" :size="13" />当前区域</span>
-              <button class="info-row__value info-row__value--btn" @click="regionOpen = !regionOpen">
-                {{ regionLabel }}<Icon name="chevron-down" :size="12" />
-              </button>
-            </div>
-            <div v-if="regionOpen" class="region-grid" role="listbox">
-              <button
-                v-for="r in REGIONS"
-                :key="r"
-                class="region-grid__item"
-                :class="{ 'is-selected': ui.region === r }"
-                role="option"
-                :aria-selected="ui.region === r"
-                @click="ui.region = r; regionOpen = false; close()"
-              >
-                {{ r === 'all' ? '全国' : r }}
-              </button>
-            </div>
-            <div class="info-row">
-              <span class="info-row__label"><Icon name="clock" :size="13" />数据更新</span>
-              <span class="info-row__value">{{ ui.lastUpdated === '—' ? '演示数据' : `更新于 ${ui.lastUpdated}` }}</span>
-            </div>
-            <button class="info-row" @click="run(() => { ui.alertsOpen = true })">
-              <span class="info-row__label"><Icon name="bell" :size="13" />待处理告警</span>
-              <span class="info-row__value"><b v-if="pendingAlerts" class="info-badge num">{{ pendingAlerts }}</b><span v-else class="info-ok">暂无</span></span>
-            </button>
           </div>
         </section>
 
@@ -116,15 +125,19 @@ async function copyLink() {
             <span>快捷操作</span>
             <Icon class="info-section__chevron" name="chevron-down" :size="14" />
           </button>
-          <div v-if="actionsOpen" class="info-section__body">
-            <button class="info-row" @click="run(onRefresh)"><span class="info-row__label"><Icon name="refresh" :size="13" />刷新数据</span><span class="info-row__hint">R</span></button>
-            <button class="info-row" @click="run(exportCurrent)"><span class="info-row__label"><Icon name="download" :size="13" />导出当前页 CSV</span><span class="info-row__hint" /></button>
-            <button class="info-row" @click="run(printPage)"><span class="info-row__label"><Icon name="printer" :size="13" />打印 / 存为 PDF</span><span class="info-row__hint" /></button>
-            <button class="info-row" @click="run(copyLink)"><span class="info-row__label"><Icon name="copy" :size="13" />复制页面链接</span><span class="info-row__hint" /></button>
-            <button class="info-row" @click="run(toggleFull)"><span class="info-row__label"><Icon :name="isFull ? 'compress' : 'expand'" :size="13" />{{ isFull ? '退出全屏' : '全屏演示' }}</span><span class="info-row__hint" /></button>
-            <button class="info-row" @click="run(() => { ui.settingsOpen = true })"><span class="info-row__label"><Icon name="settings" :size="13" />偏好设置</span><span class="info-row__hint" /></button>
-            <button class="info-row" @click="run(() => { ui.shortcutsOpen = true })"><span class="info-row__label"><Icon name="command" :size="13" />快捷键</span><span class="info-row__hint"><span class="kbd">?</span></span></button>
-            <button class="info-row" @click="run(() => { ui.commandOpen = true })"><span class="info-row__label"><Icon name="search" :size="13" />全局搜索</span><span class="info-row__hint"><span class="kbd">Ctrl K</span></span></button>
+          <div class="info-section__collapse" :class="{ 'is-open': actionsOpen }">
+            <div class="info-section__inner">
+              <div class="info-section__body">
+                <button class="info-row" @click="run(onRefresh)"><span class="info-row__label"><Icon name="refresh" :size="13" />刷新数据</span><span class="info-row__hint">R</span></button>
+                <button class="info-row" @click="run(exportCurrent)"><span class="info-row__label"><Icon name="download" :size="13" />导出当前页 CSV</span><span class="info-row__hint" /></button>
+                <button class="info-row" @click="run(printPage)"><span class="info-row__label"><Icon name="printer" :size="13" />打印 / 存为 PDF</span><span class="info-row__hint" /></button>
+                <button class="info-row" @click="run(copyLink)"><span class="info-row__label"><Icon name="copy" :size="13" />复制页面链接</span><span class="info-row__hint" /></button>
+                <button class="info-row" @click="run(toggleFull)"><span class="info-row__label"><Icon :name="isFull ? 'compress' : 'expand'" :size="13" />{{ isFull ? '退出全屏' : '全屏演示' }}</span><span class="info-row__hint" /></button>
+                <button class="info-row" @click="openOver(() => { ui.settingsOpen = true })"><span class="info-row__label"><Icon name="settings" :size="13" />偏好设置</span><span class="info-row__hint" /></button>
+                <button class="info-row" @click="openOver(() => { ui.shortcutsOpen = true })"><span class="info-row__label"><Icon name="command" :size="13" />快捷键</span><span class="info-row__hint"><span class="kbd">?</span></span></button>
+                <button class="info-row" @click="openOver(() => { ui.commandOpen = true })"><span class="info-row__label"><Icon name="search" :size="13" />全局搜索</span><span class="info-row__hint"><span class="kbd">Ctrl K</span></span></button>
+              </div>
+            </div>
           </div>
         </section>
       </div>
@@ -252,6 +265,19 @@ async function copyLink() {
 }
 .info-section__head[aria-expanded='false'] .info-section__chevron {
   transform: rotate(-90deg);
+}
+/* 折叠分区的平滑高度拉伸：grid-rows 0fr↔1fr 过渡，二次贝塞尔缓动 */
+.info-section__collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.26s cubic-bezier(0.333, 0.667, 0.667, 1);
+}
+.info-section__collapse.is-open {
+  grid-template-rows: 1fr;
+}
+.info-section__inner {
+  overflow: hidden;
+  min-height: 0;
 }
 .info-section__body {
   padding: 2px 8px 10px;

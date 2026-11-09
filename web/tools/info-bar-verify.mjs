@@ -67,6 +67,49 @@ try {
   await sleep(300)
   const regionLabel = await page.evaluate(() => document.querySelector('.info-row__value--btn')?.textContent?.trim())
   check('区域选择后标签即时更新', regionLabel === '华东', regionLabel)
+
+  // 从信息栏跳转告警中心：抽屉打开时面板保留，退出抽屉后面板仍在
+  await page.evaluate(() => {
+    const row = [...document.querySelectorAll('.info-row')].find(el => el.textContent.includes('待处理告警'))
+    row?.click()
+  })
+  await sleep(400)
+  check('告警中心在面板上方打开', await page.evaluate(() => Boolean(document.querySelector('.drawer')) && Boolean(document.querySelector('.info-panel'))))
+  await page.keyboard.press('Escape')
+  await sleep(400)
+  check('退出告警中心后面板仍在', await page.evaluate(() => !document.querySelector('.drawer') && Boolean(document.querySelector('.info-panel'))))
+
+  // 折叠分区的高度拉伸动画：收起时高度平滑变化而非瞬间消失
+  await page.evaluate(() => {
+    const head = [...document.querySelectorAll('.info-section__head')].find(h => h.textContent.includes('运行状态'))
+    head?.click()
+  })
+  const collapseSamples = await page.evaluate(async () => {
+    const wrap = document.querySelector('.info-section__collapse')
+    const out = []
+    const start = performance.now()
+    await new Promise(resolve => {
+      const tick = () => {
+        out.push({ t: performance.now() - start, h: wrap.getBoundingClientRect().height })
+        if (performance.now() - start < 450) requestAnimationFrame(tick)
+        else resolve()
+      }
+      requestAnimationFrame(tick)
+    })
+    return out
+  })
+  const heights = new Set(collapseSamples.map(s => Math.round(s.h * 10))).size
+  check('分区收起有平滑高度动画', heights >= 10 && collapseSamples[collapseSamples.length - 1].h < 2, { frames: heights, end: collapseSamples[collapseSamples.length - 1].h })
+  await page.evaluate(() => {
+    const head = [...document.querySelectorAll('.info-section__head')].find(h => h.textContent.includes('运行状态'))
+    head?.click()
+  })
+  await sleep(400)
+  const reopened = await page.evaluate(() => {
+    const wrap = document.querySelector('.info-section__collapse')
+    return wrap.classList.contains('is-open') && wrap.getBoundingClientRect().height > 100
+  })
+  check('分区展开恢复原高度', reopened)
   await page.screenshot({ path: resolve(out, 'region-switched.png') })
 
   // 滚动页面，面板保持不动（fixed）
