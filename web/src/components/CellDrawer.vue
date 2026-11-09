@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { EChartsOption } from 'echarts'
-import Drawer from './Drawer.vue'
+import Modal from './Modal.vue'
 import Icon from './Icon.vue'
 import BaseChart from './BaseChart.vue'
 import TickGauge from './TickGauge.vue'
@@ -77,11 +77,11 @@ async function copyId() {
 </script>
 
 <template>
-  <Drawer
+  <Modal
     :open="open"
     :title="cell?.name ?? '小区详情'"
     :sub="cell ? `${cell.province} · ${cell.city} · ${cell.id}` : ''"
-    width="440px"
+    width="480px"
     @close="ui.cellDetail = null"
   >
     <template v-if="cell">
@@ -120,7 +120,7 @@ async function copyId() {
       <button class="btn" @click="ui.cellDetail = null">关闭</button>
       <button class="btn btn--primary" @click="addToPlan"><Icon name="plus" :size="14" />加入扩容清单</button>
     </template>
-  </Drawer>
+  </Modal>
 </template>
 
 <style scoped>

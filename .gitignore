@@ -18,6 +18,8 @@ coverage/
 docs/layout-check/
 docs/map-check/
 docs/hourly-check/
+docs/disclosure-check/
+docs/skeleton-check/
 .playwright-cli/
 
 # 本地调试截图与探针

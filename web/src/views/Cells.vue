@@ -296,21 +296,21 @@ onUnmounted(() => {
         <table class="table table--compact">
           <thead>
             <tr>
-              <th>小区</th>
-              <th>区域 / 城市</th>
-              <th>制式</th>
-              <th class="num">带宽</th>
-              <th class="num sortable" @click="setSort('users')">用户 <span class="sort">{{ sortKey === 'users' ? (sortDir < 0 ? '↓' : '↑') : '↕' }}</span></th>
-              <th class="num sortable" @click="setSort('traffic')">日流量 <span class="sort">{{ sortKey === 'traffic' ? (sortDir < 0 ? '↓' : '↑') : '↕' }}</span></th>
-              <th class="num sortable" @click="setSort('util')">忙时利用率 <span class="sort">{{ sortKey === 'util' ? (sortDir < 0 ? '↓' : '↑') : '↕' }}</span></th>
-              <th>状态</th>
+              <th class="col-cell">小区</th>
+              <th class="col-region">区域 / 城市</th>
+              <th class="col-generation">制式</th>
+              <th class="num col-bandwidth">带宽</th>
+              <th class="num sortable col-users" @click="setSort('users')">用户 <span class="sort">{{ sortKey === 'users' ? (sortDir < 0 ? '↓' : '↑') : '↕' }}</span></th>
+              <th class="num sortable col-traffic" @click="setSort('traffic')">日流量 <span class="sort">{{ sortKey === 'traffic' ? (sortDir < 0 ? '↓' : '↑') : '↕' }}</span></th>
+              <th class="num sortable col-util" @click="setSort('util')">忙时利用率 <span class="sort">{{ sortKey === 'util' ? (sortDir < 0 ? '↓' : '↑') : '↕' }}</span></th>
+              <th class="col-status">状态</th>
               <th class="w-60" />
             </tr>
           </thead>
           <tbody>
             <tr v-for="c in paged" :key="c.id" class="row-click" @click="openCell(c)">
               <td>
-                <div class="cell-name">{{ c.name }}</div>
+                <div class="cell-name" :title="c.name">{{ c.name }}</div>
                 <div class="cell-id mono">{{ c.id }}</div>
               </td>
               <td>{{ c.region }} / {{ c.city }}</td>
@@ -419,7 +419,8 @@ onUnmounted(() => {
 
 .filters { display: flex; align-items: center; gap: 8px; }
 .search { position: relative; }
-.search svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--text-3); }
+/* v-type-reveal 会把 input 包进 position: relative 的容器，不提升层级时 input 背景会盖住图标 */
+.search svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); z-index: 1; pointer-events: none; color: var(--text-3); }
 .search .input { width: 200px; height: 30px; padding-left: 28px; font-size: 12px; }
 .select { width: 100px; }
 .seg--sm .seg__item { height: 30px; padding: 0 9px; font-size: 11.5px; }
@@ -494,6 +495,23 @@ onUnmounted(() => {
 .stat > div strong { font-size: 28px; margin-top: 5px; }
 .stat > div span { font-size: 12px; }
 .stat.is-active { background: var(--primary-soft); box-shadow: inset 0 -3px 0 var(--primary); }
+/* 固定列宽与行高：模糊/逐字动画期间内容长度变化不再重算布局，避免抖动 */
+.cells-table :deep(table) { table-layout: fixed; min-width: 640px; }
+.cells-table :deep(tbody tr) { height: 60px; }
+.cells-table :deep(.cell-name),
+.cells-table :deep(.cell-id) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cells-table :deep(.col-cell) { width: 19.3%; }
+.cells-table :deep(.col-region) { width: 13%; }
+.cells-table :deep(.col-generation) { width: 8.5%; }
+.cells-table :deep(.col-bandwidth) { width: 12%; }
+.cells-table :deep(.col-users) { width: 9.4%; }
+.cells-table :deep(.col-traffic) { width: 10.9%; }
+.cells-table :deep(.col-util) { width: 13.8%; }
+.cells-table :deep(.col-status) { width: 9.6%; }
+@media (max-width: 900px) {
+  .cells-table :deep(.table--compact td),
+  .cells-table :deep(.table--compact th) { padding-left: 10px; padding-right: 10px; }
+}
 .cells-table :deep(.panel-head) { flex-direction: column; align-items: stretch; }
 .cells-table :deep(.panel-actions) { width: 100%; }
 .filters { width: 100%; flex-wrap: wrap; gap: 10px; }

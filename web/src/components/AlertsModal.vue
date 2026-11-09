@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import Drawer from './Drawer.vue'
+import Modal from './Modal.vue'
 import Icon from './Icon.vue'
 import type { Alert } from '@/api/types'
 import {
@@ -32,7 +32,7 @@ function load() {
 watch(
   () => ui.alertsOpen,
   (open) => {
-    if (open) load()
+    if (open) loadAlerts()
   }
 )
 
@@ -53,7 +53,7 @@ function gotoCell(a: Alert) {
 </script>
 
 <template>
-  <Drawer :open="ui.alertsOpen" title="告警中心" sub="按忙时利用率与流量异常实时聚合" width="480px" @close="ui.alertsOpen = false">
+  <Modal :open="ui.alertsOpen" title="告警中心" sub="按忙时利用率与流量异常实时聚合" width="560px" height="min(82vh, 820px)" @close="ui.alertsOpen = false">
     <div class="toolbar">
       <div v-seg-mask class="seg">
         <button
@@ -69,7 +69,7 @@ function gotoCell(a: Alert) {
       <button class="btn btn--sm" @click="load"><Icon name="refresh" :size="13" />刷新</button>
     </div>
 
-    <div v-if="loading" class="loading">
+    <div v-if="loading && !alerts.length" class="loading">
       <span class="spinner" />
       正在拉取告警…
     </div>
@@ -111,7 +111,7 @@ function gotoCell(a: Alert) {
         全部确认（{{ counts['待处理'] }}）
       </button>
     </template>
-  </Drawer>
+  </Modal>
 </template>
 
 <style scoped>

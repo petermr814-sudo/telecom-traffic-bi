@@ -5,7 +5,7 @@ import AppShell from './components/AppShell.vue'
 import ToastStack from './components/ToastStack.vue'
 import CommandPalette from './components/CommandPalette.vue'
 import SettingsModal from './components/SettingsModal.vue'
-import AlertsDrawer from './components/AlertsDrawer.vue'
+import AlertsModal from './components/AlertsModal.vue'
 import CellDrawer from './components/CellDrawer.vue'
 import ShortcutsModal from './components/ShortcutsModal.vue'
 import { refresh, setRange, toast, ui } from './stores/ui'
@@ -27,7 +27,7 @@ function onKeydown(e: KeyboardEvent) {
   if (isTyping(e)) return
 
   if (e.key === 'Escape') {
-    // 只关最上层浮层：退出告警抽屉时不要把底层的信息栏一起收掉
+    // 只关最上层浮层：退出告警弹窗时不要把底层的信息栏一起收掉
     if (ui.alertsOpen) { ui.alertsOpen = false; return }
     if (ui.settingsOpen) { ui.settingsOpen = false; return }
     if (ui.shortcutsOpen) { ui.shortcutsOpen = false; return }
@@ -83,7 +83,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   <ToastStack />
   <CommandPalette />
   <SettingsModal />
-  <AlertsDrawer />
+  <AlertsModal />
   <CellDrawer />
   <ShortcutsModal />
 </template>

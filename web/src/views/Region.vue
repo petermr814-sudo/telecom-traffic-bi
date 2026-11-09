@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import Modal from '@/components/Modal.vue'
+import { replayTextReveal } from '@/lib/textReveal'
 import Panel from '@/components/Panel.vue'
 import TrafficExplorer from '@/components/TrafficExplorer.vue'
 import Icon from '@/components/Icon.vue'
@@ -28,6 +30,18 @@ const { data, error, loading, run } = useAsync(
 const rows = computed<ProvinceRow[]>(() => data.value ?? [])
 
 const selectedRow = computed(() => rows.value.find((r) => r.province === selected.value) ?? null)
+const detailEl = ref<HTMLElement | null>(null)
+
+// 弹窗内切换省份时重播上方数值的模糊浮现；首次打开由 v-text-reveal 自身完成
+watch(
+  () => selectedRow.value?.province,
+  (next, prev) => {
+    if (!next || !prev) return
+    nextTick(() => {
+      if (detailEl.value) replayTextReveal(detailEl.value)
+    })
+  }
+)
 const selectedRank = computed(() => {
   if (!selectedRow.value) return 0
   const sorted = [...rows.value].sort((a, b) => b.trafficBytes - a.trafficBytes)
@@ -63,6 +77,10 @@ function selectProvince(name: string) {
   selected.value = selected.value === name ? null : name
 }
 
+function showProvince(name: string) {
+  selected.value = name
+}
+
 function viewCells() {
   if (!selectedRow.value) return
   ui.region = selectedRow.value.region
@@ -77,9 +95,19 @@ function exportCsv() {
   toast('success', '已导出 CSV', `${body.length} 个省级行政区`)
 }
 
-onMounted(() => window.addEventListener('telco:export', exportCsv))
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && selected.value) selected.value = null
+}
 
-onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
+onMounted(() => {
+  window.addEventListener('telco:export', exportCsv)
+  window.addEventListener('keydown', onKeydown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('telco:export', exportCsv)
+  window.removeEventListener('keydown', onKeydown)
+})
 </script>
 
 <template>
@@ -115,22 +143,26 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
 
     <TrafficExplorer :provinces="rows" />
 
-      <Panel v-if="selectedRow" class="prov-detail-panel" :title="selectedRow.province" :sub="`${selectedRow.region} · 流量排名第 ${selectedRank}`">
-        <template #actions>
-          <button class="btn btn--sm" @click="selected = null"><Icon name="close" :size="12" />清除</button>
-        </template>
+    <Modal
+      :open="Boolean(selectedRow)"
+      :title="selectedRow?.province ?? '省份详情'"
+      :sub="selectedRow ? `${selectedRow.region} · 流量排名第 ${selectedRank}` : ''"
+      width="440px"
+      @close="selected = null"
+    >
+      <div v-if="selectedRow" ref="detailEl" class="prov-detail">
         <div class="detail-hero">
           <div>
             <span class="detail-label">流量</span>
-            <strong class="num">{{ fmtBytes(selectedRow.trafficBytes, 0) }}</strong>
+            <strong v-text-reveal class="num">{{ fmtBytes(selectedRow.trafficBytes, 0) }}</strong>
           </div>
-          <span class="prov-chip">占全网 {{ selectedRow.share.toFixed(1) }}%</span>
+          <span class="prov-chip"><span v-text-reveal>占全网 {{ selectedRow.share.toFixed(1) }}%</span></span>
         </div>
         <div class="detail-grid">
-          <div><span>活跃用户</span><strong class="num">{{ fmtCount(selectedRow.users) }}</strong></div>
-          <div><span>人均流量</span><strong class="num">{{ fmtBytes(selectedRow.perUserBytes, 0) }}</strong></div>
-          <div><span>同比增速</span><strong class="num" :class="selectedRow.growth >= 0 ? 'up' : 'down'">{{ fmtDelta(selectedRow.growth) }}</strong></div>
-          <div><span>重点小区</span><strong class="num">{{ fmtInt(selectedRow.cells) }} 个</strong></div>
+          <div><span>活跃用户</span><strong v-text-reveal class="num">{{ fmtCount(selectedRow.users) }}</strong></div>
+          <div><span>人均流量</span><strong v-text-reveal class="num">{{ fmtBytes(selectedRow.perUserBytes, 0) }}</strong></div>
+          <div><span>同比增速</span><strong v-text-reveal class="num" :class="selectedRow.growth >= 0 ? 'up' : 'down'">{{ fmtDelta(selectedRow.growth) }}</strong></div>
+          <div><span>重点小区</span><strong v-text-reveal class="num">{{ fmtInt(selectedRow.cells) }} 个</strong></div>
         </div>
         <div class="detail-section">
           <h4>同区域省份对比</h4>
@@ -139,7 +171,7 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
               v-for="p in rows.filter((r) => r.region === selectedRow?.region).sort((a, b) => b.trafficBytes - a.trafficBytes).slice(0, 5)"
               :key="p.province"
               :class="{ 'is-active': p.province === selectedRow?.province }"
-              @click="selectProvince(p.province)"
+              @click="showProvince(p.province)"
             >
               <span class="peer-name">{{ p.province }}</span>
               <span class="peer-bar"><i :style="{ width: `${(p.trafficBytes / (topByTraffic?.trafficBytes || 1)) * 100}%` }" /></span>
@@ -151,7 +183,8 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
           查看该省重点小区
           <Icon name="chevron-right" :size="13" />
         </button>
-      </Panel>
+      </div>
+    </Modal>
 
 
     <div class="section-heading prov-heading"><div class="prov-eyebrow">PROVINCE SURVEY <span>/ 04</span></div><h2>省份明细</h2><p>搜索、排序并比较各省表现</p></div>
@@ -201,7 +234,7 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
 
   <Transition name="skeleton-fade" :duration="250">
     <div v-if="!error && !data" class="skeleton-page">
-      <SkeletonLoader class="card stats-skel" variant="line" compact />
+      <SkeletonLoader class="card stats-skel" variant="stats" />
       <SkeletonLoader class="card map-skel" variant="chart" label="正在加载区域数据…" />
     </div>
   </Transition>
@@ -353,7 +386,8 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
 
 .filters { display: flex; gap: 8px; align-items: center; }
 .search { position: relative; }
-.search svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--text-3); }
+/* v-type-reveal 会把 input 包进 position: relative 的容器，不提升层级时 input 背景会盖住图标 */
+.search svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); z-index: 1; pointer-events: none; color: var(--text-3); }
 .search .input { width: 180px; height: 30px; padding-left: 28px; font-size: 12px; }
 .select { width: 92px; }
 
@@ -372,7 +406,7 @@ th.sortable:hover { color: var(--text); }
 .error-card .btn { margin-left: auto; }
 
 .skeleton-page { display: flex; flex-direction: column; gap: 24px; }
-.stats-skel { height: 80px; }
+.stats-skel { height: 124px; }
 .map-skel { height: 500px; }
 
 @media (max-width: 1120px) {
@@ -439,17 +473,16 @@ th.sortable:hover { color: var(--text); }
 .growth-chip.is-up { color: #2e7a6f; background: #e7f1ea; }
 .growth-chip.is-down { color: #b05050; background: #f6ebea; }
 
-.prov-detail-panel { border-color: #e2e9e0; border-radius: 14px; filter: drop-shadow(0 6px 20px rgba(35, 61, 48, 0.04)); }
-.prov-detail-panel .detail-hero { border-color: #e9ede3; }
-.prov-detail-panel .detail-hero strong { color: #2f3d38; }
-.prov-detail-panel .detail-grid { border-color: #e9ede3; background: #e9ede3; }
-.prov-detail-panel .detail-grid span { color: #87958c; }
-.prov-detail-panel .detail-grid strong { color: #2f3d38; }
+.prov-detail .detail-hero { border-color: #e9ede3; }
+.prov-detail .detail-hero strong { color: #2f3d38; }
+.prov-detail .detail-grid { border-color: #e9ede3; background: #e9ede3; }
+.prov-detail .detail-grid span { color: #87958c; }
+.prov-detail .detail-grid strong { color: #2f3d38; }
 .prov-chip { display: inline-flex; align-items: center; padding: 3px 10px; border: 1px solid #d3e3d8; border-radius: 999px; background: #e7f1ea; color: #2e7a6f; font-size: 10px; font-weight: 500; }
-.prov-detail-panel .peer-list li:hover { background: #f4f7f0; }
-.prov-detail-panel .peer-list li.is-active { background: #eef3ea; color: #2e7a6f; }
-.prov-detail-panel .peer-bar { background: #eef1ea; }
-.prov-detail-panel .peer-bar i { background: #2e7a6f; }
-.prov-detail-panel .detail-action { background: #eef3ea; border-color: #d9e6da; color: #2e7a6f; }
+.prov-detail .peer-list li:hover { background: #f4f7f0; }
+.prov-detail .peer-list li.is-active { background: #eef3ea; color: #2e7a6f; }
+.prov-detail .peer-bar { background: #eef1ea; }
+.prov-detail .peer-bar i { background: #2e7a6f; }
+.prov-detail .detail-action { background: #eef3ea; border-color: #d9e6da; color: #2e7a6f; }
 
 </style>

@@ -34,7 +34,7 @@ defineEmits<{ (e: 'retry'): void }>()
           <button class="btn btn--sm" @click="$emit('retry')">重试</button>
         </div>
         <div v-else-if="loading" class="state state--loading">
-          <SkeletonLoader variant="chart" />
+          <SkeletonLoader variant="rows" />
         </div>
         <div v-else>
           <slot />

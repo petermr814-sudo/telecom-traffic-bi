@@ -13,6 +13,13 @@ body,
 html {
   /* 始终保留纵向滚动条位置，避免展开/收起日期详情时内容宽度跳动 */
   overflow-y: scroll;
+  /* 弹窗锁定滚动时仍保留滚动条占位，避免内容横向跳动 */
+  scrollbar-gutter: stable;
+}
+
+/* 弹窗打开时只锁 html 的滚动，页面保持原滚动位置，不随弹窗开关跳动 */
+html.is-scroll-locked {
+  overflow: hidden;
 }
 
 body {
@@ -126,7 +133,6 @@ svg {
 .stats,
 .national-insight,
 .prov-table-panel,
-.prov-detail-panel,
 .rt {
   overflow: hidden;
   corner-shape: squircle;
@@ -587,18 +593,17 @@ svg {
   transform: translateY(4px);
 }
 
-/* 二次贝塞尔缓动：enter 用 easeOutQuad（cubic-bezier(0.333, 0.667, 0.667, 1)），
-   leave 用 easeInQuad（cubic-bezier(0.333, 0, 0.667, 0.333)），均为二次曲线的精确三次表示 */
+/* 二次贝塞尔缓动：enter 用 easeOutQuad，leave 用 easeInQuad（tokens.css 中的 --ease-quad-*） */
 .page-enter-active {
   transition:
-    opacity 0.24s cubic-bezier(0.333, 0.667, 0.667, 1),
-    transform 0.24s cubic-bezier(0.333, 0.667, 0.667, 1);
+    opacity 0.24s var(--ease-quad-out),
+    transform 0.24s var(--ease-quad-out);
 }
 
 .page-leave-active {
   transition:
-    opacity 0.16s cubic-bezier(0.333, 0, 0.667, 0.333),
-    transform 0.16s cubic-bezier(0.333, 0, 0.667, 0.333);
+    opacity 0.16s var(--ease-quad-in),
+    transform 0.16s var(--ease-quad-in);
 }
 
 .page-enter-from {

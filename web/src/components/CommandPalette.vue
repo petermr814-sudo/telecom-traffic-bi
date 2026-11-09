@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import Icon from './Icon.vue'
+import { lockPageScroll, unlockPageScroll } from '@/lib/scrollLock'
 import { refresh, setRange, setRegion, toast, ui } from '@/stores/ui'
 import type { RangeKey, RegionKey } from '@/api/types'
 
@@ -172,9 +173,17 @@ function onKey(e: KeyboardEvent) {
   }
 }
 
+const lockHolder = {}
+let locked = false
+
 watch(
   () => ui.commandOpen,
   async (open) => {
+    if (open !== locked) {
+      locked = open
+      if (open) lockPageScroll(lockHolder)
+      else unlockPageScroll(lockHolder)
+    }
     if (open) {
       q.value = ''
       active.value = 0
@@ -183,11 +192,15 @@ watch(
     }
   }
 )
+
+onUnmounted(() => {
+  if (locked) unlockPageScroll(lockHolder)
+})
 </script>
 
 <template>
   <Teleport to="body">
-    <transition name="fade">
+    <transition name="dialog">
       <div v-if="ui.commandOpen" class="mask" @click.self="close">
         <div class="palette" role="dialog" aria-modal="true" aria-label="全局搜索">
           <div class="search-row">
@@ -233,6 +246,55 @@ watch(
 </template>
 
 <style scoped>
+.dialog-enter-active {
+  transition: opacity 0.24s var(--ease-quad-out);
+}
+
+.dialog-leave-active {
+  transition: opacity 0.16s var(--ease-quad-in);
+}
+
+.dialog-enter-from,
+.dialog-leave-to {
+  opacity: 0;
+}
+
+.dialog-enter-active .palette {
+  transition:
+    opacity 0.24s var(--ease-quad-out),
+    transform 0.24s var(--ease-quad-out);
+}
+
+.dialog-leave-active .palette {
+  transition:
+    opacity 0.16s var(--ease-quad-in),
+    transform 0.16s var(--ease-quad-in);
+}
+
+.dialog-enter-from .palette {
+  opacity: 0;
+  transform: translateY(10px) scale(0.985);
+}
+
+.dialog-leave-to .palette {
+  opacity: 0;
+  transform: translateY(6px) scale(0.99);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog-enter-active,
+  .dialog-leave-active,
+  .dialog-enter-active .palette,
+  .dialog-leave-active .palette {
+    transition: none;
+  }
+
+  .dialog-enter-from .palette,
+  .dialog-leave-to .palette {
+    transform: none;
+  }
+}
+
 .mask {
   position: fixed;
   inset: 0;

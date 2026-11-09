@@ -56,7 +56,10 @@ try {
   }
   await page.setViewport({ width: 1280, height: 900 })
   await page.goto(`${BASE}#/pipeline`, { waitUntil: 'networkidle0' })
-  check('技术说明默认收起', await page.$eval('.disclosure', el => !el.open && !el.querySelector('.endpoints')))
+  check('技术说明默认收起', await page.$eval('.disclosure', el => {
+    const content = el.querySelector('.disclosure-content')
+    return !el.open && Boolean(content) && getComputedStyle(content).visibility === 'hidden'
+  }))
   await page.focus('.disclosure summary')
   await page.keyboard.press('Enter')
   await page.waitForSelector('.endpoints li')

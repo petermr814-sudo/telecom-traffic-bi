@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import dayjs from 'dayjs'
 import TrafficMap3D from './TrafficMap3D.vue'
 import BaseChart from './BaseChart.vue'
@@ -10,6 +10,7 @@ import { api } from '@/api/client'
 import type { ProvinceRow } from '@/api/types'
 import { useAsync } from '@/lib/useAsync'
 import { aggregateCities, cityMetric, type MapMetric } from '@/lib/cityTraffic'
+import { replayTextReveal } from '@/lib/textReveal'
 import { fmtBytes, fmtCount, fmtDelta } from '@/lib/format'
 import { axisLabel, tooltipBase } from '@/lib/chart'
 import { ui } from '@/stores/ui'
@@ -21,6 +22,7 @@ const query = ref('')
 const moving = ref(false)
 const metrics: { key: MapMetric; label: string }[] = [{ key: 'traffic', label: '流量' }, { key: 'users', label: '用户' }, { key: 'perUser', label: '人均' }, { key: 'growth', label: '增速' }]
 const metricsGroup = ref<HTMLElement | null>(null)
+const cityPanel = ref<HTMLElement | null>(null)
 
 // 指标切换的滑动胶囊遮罩：二次缓动补间，与时段页日期遮罩同一套缓动；
 // 不跟随系统的「减少动画」偏好，保证切换时能明确看到滑动
@@ -59,6 +61,11 @@ function moveMetricsMask() {
   metricsRaf = requestAnimationFrame(step)
 }
 watch(metric, moveMetricsMask)
+// 指标切换后先让 Vue 完成排名重排与数值更新，再重播右侧信息栏的模糊浮现
+watch(metric, async () => {
+  await nextTick()
+  if (cityPanel.value) replayTextReveal(cityPanel.value)
+})
 onMounted(() => {
   moveMetricsMask()
   window.addEventListener('resize', moveMetricsMask)
@@ -135,7 +142,7 @@ const regionRows = computed(() => {
           <TrafficMap3D :cities="cities" :provinces="provinces" :metric="metric" :selected="selected" @select="selectCity" @reset="reset" @moving="moving = $event" />
           <div class="map-scale"><span>{{ caption }}</span><span class="scale-key">DEM 地形</span></div>
         </div>
-        <aside class="city-panel" aria-label="城市数据">
+        <aside ref="cityPanel" class="city-panel" aria-label="城市数据">
           <template v-if="selectedCity">
             <button class="back-button" @click="reset"><Icon name="chevron-left" :size="13" />返回全国概览</button>
             <div class="city-heading"><div><p>{{ selectedCity.region }} · {{ selectedCity.province }}</p><h3>{{ selectedCity.name }}<span>城市洞察</span></h3></div><span class="city-target"><Icon name="target" :size="22" /></span></div>
@@ -152,11 +159,11 @@ const regionRows = computed(() => {
             <div class="overview-heading"><div><div class="eyebrow">CITY EXPLORER</div><h3>从全国，深入一座城</h3></div><span>{{ cities.length }}<small> 城市</small></span></div>
             <p class="overview-desc">选择城市，让数据与空间一起聚焦。</p>
             <div class="city-search"><Icon name="search" :size="15" /><input v-model="query" v-type-reveal aria-label="搜索地图城市" placeholder="搜索城市、省份或大区" /><button v-if="query" aria-label="清空城市搜索" @click="query = ''"><Icon name="close" :size="13" /></button></div>
-            <div class="ranking-caption"><span>{{ query ? `找到 ${filtered.length} 座城市` : '重点城市排名' }}</span><span>{{ metric === 'growth' ? '所在省同比' : `${rangeLabel}${metrics.find(m => m.key === metric)?.label}` }}</span></div>
+            <div class="ranking-caption"><span v-text-reveal>{{ query ? `找到 ${filtered.length} 座城市` : '重点城市排名' }}</span><span v-text-reveal>{{ metric === 'growth' ? '所在省同比' : `${rangeLabel}${metrics.find(m => m.key === metric)?.label}` }}</span></div>
             <div v-if="error" class="city-empty" role="alert">城市数据加载失败<button @click="run">重新加载</button></div>
             <div v-else-if="loading && !data" class="city-empty" role="status">正在读取城市数据…</div>
             <div v-else class="city-ranking">
-              <button v-for="(city, i) in filtered" :key="city.name" class="city-row" :data-city="city.name" :aria-label="`查看${city.name}城市详情`" @click="selectCity(city.name)"><span class="rank-no">{{ String(i + 1).padStart(2, '0') }}</span><span class="rank-city">{{ city.name }}<i :style="{ width: `${Math.max(3, Math.abs(cityMetric(city, metric, provinces)) / rankingMax * 100)}%` }" /></span><span class="rank-value num">{{ valueText(city) }}</span><Icon name="chevron-right" :size="12" /></button>
+              <button v-for="(city, i) in filtered" :key="city.name" class="city-row" :data-city="city.name" :aria-label="`查看${city.name}城市详情`" @click="selectCity(city.name)"><span v-text-reveal class="rank-no">{{ String(i + 1).padStart(2, '0') }}</span><span v-text-reveal class="rank-city">{{ city.name }}<i :style="{ width: `${Math.max(3, Math.abs(cityMetric(city, metric, provinces)) / rankingMax * 100)}%` }" /></span><span v-text-reveal class="rank-value num">{{ valueText(city) }}</span><Icon name="chevron-right" :size="12" /></button>
               <p v-if="!filtered.length" class="city-empty">暂无匹配城市，试试其他名称。</p>
             </div>
             <p class="panel-footnote"><span class="small-dot" />{{ activeCells.length }} 个重点小区 · {{ fmtBytes(totalTraffic, 1) }}<span v-if="api.mode !== 'api'"> · 模拟数据</span></p>
@@ -218,7 +225,7 @@ const regionRows = computed(() => {
 .rank-no { color: #9ca991; font: 10px var(--mono); }
 .city-row:nth-child(-n+3) .rank-no { color: #718c65; }
 .rank-city { color: #4e5b45; font-size: 12px; min-width: 0; position: relative; padding-bottom: 8px; }
-.rank-city i { position: absolute; height: 2px; left: 0; bottom: 0; border-radius: 4px; background: #a4b69a; max-width: 100%; }
+.rank-city i { position: absolute; height: 2px; left: 0; bottom: 0; border-radius: 4px; background: #a4b69a; max-width: 100%; transition: width .32s cubic-bezier(.4, 0, .2, 1); }
 .rank-value { font-size: 11px; color: #718265; text-align: right; }
 .city-row > svg { color: #9aab90; }
 .panel-footnote { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-top: 18px; color: #93a389; font-size: 9px; }

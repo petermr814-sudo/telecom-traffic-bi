@@ -84,16 +84,16 @@ try {
   const regionLabel = await page.evaluate(() => document.querySelector('.info-row__value--btn')?.textContent?.trim())
   check('区域选择后标签即时更新', regionLabel === '华东', regionLabel)
 
-  // 从信息栏跳转告警中心：抽屉打开时面板保留，退出抽屉后面板仍在
+  // 从信息栏跳转告警中心：弹窗打开时面板保留，退出弹窗后面板仍在
   await page.evaluate(() => {
     const row = [...document.querySelectorAll('.info-row')].find(el => el.textContent.includes('待处理告警'))
     row?.click()
   })
   await sleep(400)
-  check('告警中心在面板上方打开', await page.evaluate(() => Boolean(document.querySelector('.drawer')) && Boolean(document.querySelector('.info-panel'))))
+  check('告警中心在面板上方打开', await page.evaluate(() => Boolean(document.querySelector('.modal')) && Boolean(document.querySelector('.info-panel'))))
   await page.keyboard.press('Escape')
   await sleep(400)
-  check('退出告警中心后面板仍在', await page.evaluate(() => !document.querySelector('.drawer') && Boolean(document.querySelector('.info-panel'))))
+  check('退出告警中心后面板仍在', await page.evaluate(() => !document.querySelector('.modal') && Boolean(document.querySelector('.info-panel'))))
 
   // 折叠分区的高度拉伸动画：收起时高度平滑变化而非瞬间消失
   await page.evaluate(() => {

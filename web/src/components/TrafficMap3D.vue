@@ -52,7 +52,7 @@ const terrainPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0))
 const terrainProbe = new THREE.Vector3()
 const pointer = new THREE.Vector2()
 const projected = new THREE.Vector3()
-const markerObjects = new Map<string, { group: THREE.Group; height: number; center: THREE.Vector3 }>()
+const markerObjects = new Map<string, { group: THREE.Group; center: THREE.Vector3 }>()
 let cityGeo: Feature[] = []
 let raf = 0
 let destroyed = false
@@ -232,7 +232,7 @@ function updateMarkers() {
     group.add(beam, dot, ring, hit)
     group.traverse(obj => { obj.userData.city = city.name })
     markerGroup.add(group)
-    markerObjects.set(city.name, { group, height: barHeight, center })
+    markerObjects.set(city.name, { group, center })
   }
   dirty = true
 }
@@ -303,10 +303,13 @@ function renderLabels() {
   const occupied: { x: number; y: number }[] = []
   // Selected city always wins collision detection. Hidden labels remain accessible in the city list.
   const ordered = [...labels].sort((a, b) => Number(b.dataset.city === props.selected) - Number(a.dataset.city === props.selected))
+  // 固定在国家/城市视角最高柱体之上（0.82 / 0.17 + 间距），不跟随指标重算的柱高；
+  // 否则切换指标时标签会上下跳动，还会在碰撞检测边界反复显隐。
+  const lift = props.selected ? 0.32 : 1.02
   for (const label of ordered) {
     const marker = markerObjects.get(label.dataset.city!)
     if (!marker) { label.hidden = true; continue }
-    projected.copy(marker.center).add(new THREE.Vector3(0, marker.height + (props.selected ? 0.12 : 0.2), 0))
+    projected.copy(marker.center).add(new THREE.Vector3(0, lift, 0))
     projected.y *= land.scale.y
     projected.project(camera)
     const x = (projected.x + 1) * width / 2

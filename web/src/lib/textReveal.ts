@@ -88,6 +88,13 @@ export function animateTexts(root: HTMLElement, options: TextRevealOptions = {})
   return { promise, cancel }
 }
 
+/** 让子树里挂了 v-text-reveal 的元素用新文本重播一次模糊浮现 */
+export function replayTextReveal(root: ParentNode) {
+  root.querySelectorAll<HTMLElement>('[data-text-reveal]').forEach((el) => {
+    el.dispatchEvent(new CustomEvent('text:replay'))
+  })
+}
+
 interface RevealState {
   anim: TextAnim | null
   media: MediaQueryList

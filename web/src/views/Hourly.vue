@@ -12,10 +12,30 @@ import { api } from '@/api/client'
 import { fmtBytes, hourLabel, splitBytes } from '@/lib/format'
 import { axisLabel, C, gridBase, splitLine, tooltipBase } from '@/lib/chart'
 import { dotHeatOption, handWobble, type HeatAnim } from '@/lib/chartTemplates'
+import { ChartSweep } from '@/lib/chartSweep'
 import { downloadFile, toCsv, toast, ui } from '@/stores/ui'
 
 const selectedDay = ref<number | null>(null)
 const chartType = ref<'line' | 'bar'>('bar')
+const trendChart = ref<InstanceType<typeof BaseChart> | null>(null)
+const styleSwitching = ref(false)
+let trendSweep: ChartSweep | null = null
+let styleTimer = 0
+
+function switchChartType(next: 'bar' | 'line') {
+  if (next === chartType.value) return
+  const chart = trendChart.value?.getChart()
+  const host = trendChart.value?.$el as HTMLElement | undefined
+  if (chart && host && !chart.isDisposed() && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    trendSweep ??= new ChartSweep(host)
+    trendSweep.play(chart)
+  }
+  // 切换时新样式直接落定，由擦除动画承担过渡；错峰只保留给首次入场
+  styleSwitching.value = true
+  window.clearTimeout(styleTimer)
+  styleTimer = window.setTimeout(() => { styleSwitching.value = false }, 720)
+  chartType.value = next
+}
 const showAvg = ref(false)
 const heatMode = ref<'abs' | 'share'>('abs')
 const rankSort = ref<'flow' | 'hour'>('flow')
@@ -188,24 +208,29 @@ const trendOption = computed(() => {
   const compare = ui.compare && previous.value
   const focusedHour = heatPick.value?.day === day.index ? heatPick.value.hour : day.peakIndex
   return {
-    animationDuration: 350,
+    // BaseChart 首帧会把 animation 落为 false（骨架屏交接），后续更新需显式恢复
+    animation: true,
+    animationDuration: styleSwitching.value ? 0 : 350,
+    animationDurationUpdate: 560,
+    animationDelayUpdate: 0,
+    animationEasingUpdate: 'cubicInOut',
     animationType: chartType.value === 'line' ? 'expand' : 'expansion',
-    animationDelay: chartType.value === 'bar' ? (idx: number) => idx * 30 : undefined,
+    animationDelay: chartType.value === 'bar' && !styleSwitching.value ? (idx: number) => idx * 12 : 0,
     grid: { ...gridBase, top: 24 },
     tooltip: { ...tooltipBase, trigger: 'axis', axisPointer: { type: chartType.value === 'bar' ? 'shadow' : 'line' }, formatter: (points: any[]) => {
       const current = points[0], before = points[1]
       return `${day.date.format('MM-DD')} ${current.axisValue}<br/>当天 <b>${fmtBytes(current.value)}</b>${before ? `<br/>前一天 ${fmtBytes(before.value)}` : ''}`
     } },
-    xAxis: { type: 'category', data: hours, boundaryGap: chartType.value === 'bar', axisLine: { lineStyle: { color: C.border } }, axisTick: { show: false }, axisLabel: { ...axisLabel, interval: 'auto' } },
+    xAxis: { type: 'category', data: hours, boundaryGap: true, axisLine: { lineStyle: { color: C.border } }, axisTick: { show: false }, axisLabel: { ...axisLabel, interval: 'auto' } },
     yAxis: { type: 'value', splitNumber: 4, splitLine, axisLabel: { ...axisLabel, formatter: (value: number) => fmtBytes(value, 0) } },
     series: [{
-      name: '当天', type: chartType.value, smooth: false, data: day.values, barWidth: '70%',
+      id: 'day', name: '当天', type: chartType.value, smooth: false, data: day.values, barWidth: '70%',
       showSymbol: chartType.value === 'line', symbol: 'circle', symbolSize: 4,
       itemStyle: chartType.value === 'bar' ? { color: (p: any) => p.dataIndex === focusedHour ? '#081f5c' : '#7096d1', borderRadius: [3, 3, 0, 0] } : { color: C.primary },
       lineStyle: { width: 1.8, color: C.primary },
       label: { show: chartType.value === 'bar', position: 'top', color: C.primary, fontSize: 11, fontWeight: 650, formatter: (p: any) => p.dataIndex === focusedHour ? fmtBytes(p.value) : '' },
       markLine: showAvg.value ? { silent: true, symbol: 'none', lineStyle: { color: C.amber, type: 'dashed', width: 1 }, label: { show: false }, data: [{ yAxis: day.average }] } : undefined,
-    }, ...(compare ? [{ name: '前一天', type: 'line', data: previous.value!.values, smooth: false, showSymbol: false, lineStyle: { color: '#a6b3c7', type: 'dashed', width: 1.2 }, itemStyle: { color: '#a6b3c7' } }] : [])],
+    }, ...(compare ? [{ id: 'previous', name: '前一天', type: 'line', data: previous.value!.values, smooth: false, showSymbol: false, lineStyle: { color: '#a6b3c7', type: 'dashed', width: 1.2 }, itemStyle: { color: '#a6b3c7' } }] : [])],
   } as any
 })
 
@@ -239,6 +264,9 @@ onMounted(() => window.addEventListener('telco:export', exportCsv))
 onUnmounted(() => {
   window.removeEventListener('telco:export', exportCsv)
   cancelAnimationFrame(animRaf)
+  window.clearTimeout(styleTimer)
+  trendSweep?.dispose()
+  trendSweep = null
 })
 </script>
 
@@ -274,16 +302,16 @@ onUnmounted(() => {
         <div class="metric-strip"><span>日均小时流量<strong>{{ fmtBytes(selected.average) }}</strong></span><span>峰均比<strong>{{ (selected.peak / Math.max(1, selected.average)).toFixed(2) }}×</strong></span></div>
         <div class="day-charts">
           <Panel data-chart="day-trend" :data-template="chartType === 'bar' ? 'G12' : 'F2'" title="当天 24 小时流量" :sub="`${selected.date.format('MM月DD日')} · 每小时独立读数`">
-            <template #actions><div v-seg-mask class="seg seg--sm"><button class="seg__item" :class="{ 'is-active': chartType === 'bar' }" @click="chartType = 'bar'">柱状</button><button class="seg__item" :class="{ 'is-active': chartType === 'line' }" @click="chartType = 'line'">折线</button></div></template>
+            <template #actions><div v-seg-mask class="seg seg--sm"><button class="seg__item" :class="{ 'is-active': chartType === 'bar' }" @click="switchChartType('bar')">柱状</button><button class="seg__item" :class="{ 'is-active': chartType === 'line' }" @click="switchChartType('line')">折线</button></div></template>
             <div class="chart-controls"><button v-if="previous" class="control-toggle" :class="{ 'is-active': ui.compare }" :aria-pressed="ui.compare" @click="ui.compare = !ui.compare"><span />对比前一天</button><button class="control-toggle" :class="{ 'is-active': showAvg }" :aria-pressed="showAvg" @click="showAvg = !showAvg"><span />日均线</button></div>
-            <BaseChart :option="trendOption" height="280px" :replace-merge="['series']" />
+            <BaseChart ref="trendChart" :option="trendOption" height="280px" :replace-merge="['series']" />
             <p v-if="showAvg" class="chart-note">橙色虚线：当天小时均值 {{ fmtBytes(selected.average) }}</p>
           </Panel>
           <Panel data-template="G4" title="当天时段构成" sub="全部时段合计 100%"><ShareWaffle :items="periods" /></Panel>
         </div>
         <Disclosure title="查看当天 24 小时明细" sub="按流量排名或时间顺序逐项核对">
           <div class="detail-table-head"><span>{{ selected.date.format('YYYY-MM-DD') }} · 24 条读数</span><div v-seg-mask class="seg seg--sm"><button class="seg__item" :class="{ 'is-active': rankSort === 'flow' }" @click="rankSort = 'flow'">按流量</button><button class="seg__item" :class="{ 'is-active': rankSort === 'hour' }" @click="rankSort = 'hour'">按时间</button></div></div>
-          <div class="table-wrap" v-swap-reveal><table class="table"><thead><tr><th>小时</th><th class="num">流量</th><th class="num">占当天</th></tr></thead><tbody><tr v-for="row in ranked" :key="row.hour"><td>{{ hourLabel(row.hour) }}</td><td class="num">{{ fmtBytes(row.value) }}</td><td class="num">{{ row.share.toFixed(1) }}%</td></tr></tbody></table></div>
+          <div class="table-wrap" v-swap-reveal><table class="table"><thead><tr><th>小时</th><th class="num">流量</th><th class="num">占当天</th></tr></thead><tbody><tr v-for="(row, i) in ranked" :key="row.hour" :style="{ '--row-i': i }"><td>{{ hourLabel(row.hour) }}</td><td class="num">{{ fmtBytes(row.value) }}</td><td class="num">{{ row.share.toFixed(1) }}%</td></tr></tbody></table></div>
         </Disclosure>
       </section>
       <div v-else class="day-placeholder"><Icon name="calendar" :size="20" /><div><strong>先看整周规律，再看一天的细节</strong><p>点击热力图左侧的日期，即可展开当天统计卡片和详细图表。</p></div></div>
@@ -357,6 +385,14 @@ onUnmounted(() => {
 .day-placeholder strong { color: var(--text-2); font-size: 14px; font-weight: 550; }
 .day-placeholder p { font-size: 12px; line-height: 1.7; margin-top: 5px; }
 .detail-table-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin: 10px 0 16px; color: var(--text-3); font-size: 12px; }
+/* 明细表格展开：行级联淡入（收起再展开会重播）；排序只移动行节点不重挂载，不受影响 */
+@media (prefers-reduced-motion: no-preference) {
+  .day-details :deep(.disclosure[open]) .table-wrap tr {
+    animation: detail-row-in 220ms ease-out both;
+    animation-delay: calc(var(--row-i) * 10ms);
+  }
+}
+@keyframes detail-row-in { from { opacity: 0; } }
 .weekly-skeleton { height: 490px; }
 .error-card { display: flex; align-items: center; gap: 16px; padding: 24px; color: var(--red); }
 .error-card p { color: var(--text-3); font-size: 12px; }
