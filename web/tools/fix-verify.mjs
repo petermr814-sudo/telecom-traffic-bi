@@ -92,19 +92,33 @@ const tooltipText = await page.evaluate(() => {
 })
 check('折线图 hover 有数值', /\d/.test(tooltipText), tooltipText.replace(/\n/g, ' | ').slice(0, 80))
 
-const badgeBefore = await page.evaluate(() => document.querySelector('.bell-badge')?.textContent?.trim() || '0')
-await page.click('.bell')
+const badgeBefore = await page.evaluate(() => document.querySelector('.info-toggle__badge')?.textContent?.trim() || '0')
+await page.evaluate(() => {
+  if (!document.querySelector('.info-panel')) document.querySelector('.info-toggle').click()
+})
+await sleep(250)
+await page.evaluate(() => {
+  const row = [...document.querySelectorAll('.info-row')].find((el) => el.textContent.includes('待处理告警'))
+  row?.click()
+})
 await sleep(700)
 await clickText('全部确认')
 await sleep(500)
-const badgeAfter = await page.evaluate(() => document.querySelector('.bell-badge')?.textContent?.trim() || '0')
+const badgeAfter = await page.evaluate(() => document.querySelector('.info-toggle__badge')?.textContent?.trim() || '0')
 check('告警角标随确认更新', Number(badgeBefore) > 0 && Number(badgeAfter) === 0, `${badgeBefore} -> ${badgeAfter}`)
 await page.keyboard.press('Escape')
 await sleep(300)
 
-await page.click('button[aria-label="刷新数据"]')
+await page.evaluate(() => {
+  if (!document.querySelector('.info-panel')) document.querySelector('.info-toggle').click()
+})
+await sleep(250)
+await page.evaluate(() => {
+  const row = [...document.querySelectorAll('.info-row')].find((el) => el.textContent.includes('刷新数据'))
+  row?.click()
+})
 await sleep(700)
-const badgeAfterRefresh = await page.evaluate(() => document.querySelector('.bell-badge')?.textContent?.trim() || '0')
+const badgeAfterRefresh = await page.evaluate(() => document.querySelector('.info-toggle__badge')?.textContent?.trim() || '0')
 check('刷新后已确认告警不会被重置', Number(badgeAfterRefresh) === 0, `badge=${badgeAfterRefresh}`)
 
 await page.hover('.kpi')

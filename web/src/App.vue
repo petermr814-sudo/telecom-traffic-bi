@@ -27,6 +27,7 @@ function onKeydown(e: KeyboardEvent) {
   if (isTyping(e)) return
 
   if (e.key === 'Escape') {
+    ui.infoOpen = false
     ui.alertsOpen = false
     ui.settingsOpen = false
     ui.shortcutsOpen = false

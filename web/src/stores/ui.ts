@@ -39,6 +39,7 @@ export const ui = reactive({
   settings: readSettings(),
   toasts: [] as Toast[],
   commandOpen: false,
+  infoOpen: false,
   alertsOpen: false,
   settingsOpen: false,
   shortcutsOpen: false,

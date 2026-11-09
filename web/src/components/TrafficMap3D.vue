@@ -5,6 +5,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import Icon from './Icon.vue'
 import { loadManifest, loadDem, loadSurface, HEIGHT_SCALE, TERRAIN_BASE, type TerrainManifest, type ElevationRaster } from '@/lib/terrain'
 import { fitMapDistance, MAP_FOCUS_RESPONSE, MapCameraMotion } from '@/lib/mapCameraMotion'
+import { TerrainSelectionShadow } from '@/lib/terrainSelectionShadow'
 import type { ProvinceRow } from '@/api/types'
 import { cityMetric, type CityTraffic, type MapMetric } from '@/lib/cityTraffic'
 
@@ -28,6 +29,7 @@ const provinceGroup = new THREE.Group()
 const markerGroup = new THREE.Group()
 const focusGroup = new THREE.Group()
 const contextGroup = new THREE.Group()
+const selectionShadow = new TerrainSelectionShadow()
 let manifest: TerrainManifest | undefined
 let nationalDem: ElevationRaster | undefined
 let activeDem: ElevationRaster | undefined
@@ -135,7 +137,7 @@ async function loadCityTerrain() {
     return
   }
   // Keep the complete national terrain at its normal material and opacity.
-  // Selection highlights belong to the city outline and markers only.
+  // The selected city gets an outline and contact shadow on the same terrain.
   if (citySurface) { land.remove(citySurface); citySurface = undefined }
   provinceGroup.visible = false
   activeDem = nationalDem
@@ -157,6 +159,7 @@ async function loadCityTerrain() {
     // tile edge must never enter the picture; wider views use continuous terrain.
     const material = mesh.material as THREE.MeshStandardMaterial
     material.transparent = true
+    selectionShadow.attach(material)
     land.add(mesh)
     activeDem = dem
     terrainDetail.value = name as string
@@ -234,6 +237,12 @@ function updateMarkers() {
   dirty = true
 }
 function updateFocus() {
+  const feature = cityGeo.find(g => g.properties.name === props.selected)
+  if (feature) selectionShadow.setRegion(polygons(feature).map(polygon => polygon.map(ring => ring.map(point => {
+    const p = project(point)
+    return new THREE.Vector2(p.x, -p.y)
+  }))))
+  else selectionShadow.clear()
   // Starts the terrain swap first so the redraw below samples the national DEM
   // while the city detail is still loading.
   void loadCityTerrain()
@@ -469,6 +478,7 @@ onMounted(async () => {
     surface.geometry.computeBoundingBox()
     // Both terrain levels use the same opaque white material during selection.
     const surfaceMaterial = surface.material as THREE.MeshStandardMaterial
+    selectionShadow.attach(surfaceMaterial)
     surfaceMaterial.polygonOffset = true
     surfaceMaterial.polygonOffsetFactor = 1
     surfaceMaterial.polygonOffsetUnits = 1
@@ -514,6 +524,7 @@ watch(() => props.selected, () => {
 watch(() => [props.metric, props.cities, props.provinces], () => { updateColors(); updateMarkers() })
 onUnmounted(() => {
   destroyed = true
+  selectionShadow.dispose()
   for (const item of detailCache.values()) { land.remove(item.mesh); disposeGroup(item.mesh) }
   detailCache.clear()
   abort.abort()

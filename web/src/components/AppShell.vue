@@ -1,20 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import Icon from './Icon.vue'
-import { loadAlerts, pendingAlerts } from '@/stores/alerts'
+import InfoBar from './InfoBar.vue'
+import { loadAlerts } from '@/stores/alerts'
 import {
-  isLoading, RANGE_OPTIONS, REGIONS, refresh, setRange, setRegion, toast, ui
+  RANGE_OPTIONS, setRange, ui
 } from '@/stores/ui'
 
 const route = useRoute()
 const meta = computed(() => route.meta as { title: string; subtitle: string; group: string; hideFilters?: boolean; hideRange?: boolean; modeLabel?: string; compareable?: boolean })
-const regionLabel = computed(() => (ui.region === 'all' ? '全国' : ui.region))
-
-const regionOpen = ref(false)
-const exportOpen = ref(false)
-const moreOpen = ref(false)
-const isFull = ref(false)
 
 const nav = [
   { group: '分析', items: [
@@ -31,52 +26,11 @@ const nav = [
   ] }
 ]
 
-function closeMenus() {
-  regionOpen.value = false
-  exportOpen.value = false
-  moreOpen.value = false
-}
-
-function onRefresh() {
-  refresh()
-  toast('info', '数据已刷新', '已按当前筛选条件重新拉取')
-}
-
-function toggleFull() {
-  if (document.fullscreenElement) document.exitFullscreen()
-  else document.documentElement.requestFullscreen()
-}
-
-function onFullscreenChange() {
-  isFull.value = Boolean(document.fullscreenElement)
-}
-
-function exportCurrent() {
-  closeMenus()
-  window.dispatchEvent(new CustomEvent('telco:export'))
-}
-
-function printPage() {
-  closeMenus()
-  window.print()
-}
-
-async function copyLink() {
-  closeMenus()
-  try {
-    await navigator.clipboard.writeText(window.location.href)
-    toast('success', '链接已复制', '当前筛选条件不在链接中，仅复制页面地址')
-  } catch {
-    toast('error', '复制失败', '浏览器未授权剪贴板')
-  }
-}
-
 let alertTimer = 0
 
 onMounted(() => {
   loadAlerts()
   alertTimer = window.setInterval(() => loadAlerts(true), 60_000)
-  document.addEventListener('fullscreenchange', onFullscreenChange)
 })
 
 watch(
@@ -86,7 +40,6 @@ watch(
 
 onUnmounted(() => {
   window.clearInterval(alertTimer)
-  document.removeEventListener('fullscreenchange', onFullscreenChange)
 })
 </script>
 
@@ -195,30 +148,6 @@ onUnmounted(() => {
               </button>
             </div>
 
-            <div class="dd">
-              <button class="btn region-btn" :aria-expanded="regionOpen" @click="closeMenus(); regionOpen = !regionOpen">
-                <span class="region-label">{{ regionLabel }}</span>
-                <Icon name="chevron-down" :size="14" />
-              </button>
-              <div v-if="regionOpen" class="dd-backdrop" @click="regionOpen = false" />
-              <transition name="fade">
-                <div v-if="regionOpen" class="dd-menu dd-menu--region" role="menu">
-                  <div class="dd-label">选择区域</div>
-                  <button
-                    v-for="r in REGIONS"
-                    :key="r"
-                    class="dd-item"
-                    :class="{ 'is-selected': ui.region === r }"
-                    role="menuitem"
-                    @click="setRegion(r); regionOpen = false"
-                  >
-                    <span>{{ r === 'all' ? '全国' : r }}</span>
-                    <Icon v-if="ui.region === r" name="check" :size="14" />
-                  </button>
-                </div>
-              </transition>
-            </div>
-
             <button
               v-if="meta.compareable"
               class="btn compare-btn"
@@ -237,68 +166,7 @@ onUnmounted(() => {
             {{ meta.modeLabel }}
           </span>
 
-          <button class="btn btn--icon" aria-label="刷新数据" :class="{ 'is-spinning': isLoading }" @click="onRefresh">
-            <Icon name="refresh" :size="16" />
-          </button>
-
-          <div class="dd">
-            <button class="btn" :aria-expanded="exportOpen" @click="closeMenus(); exportOpen = !exportOpen">
-              <Icon name="download" :size="15" />
-              导出
-              <Icon name="chevron-down" :size="13" />
-            </button>
-            <div v-if="exportOpen" class="dd-backdrop" @click="exportOpen = false" />
-            <transition name="fade">
-              <div v-if="exportOpen" class="dd-menu" role="menu">
-                <button class="dd-item" @click="exportCurrent">
-                  <Icon name="table" :size="15" />
-                  <span>导出当前页 CSV</span>
-                </button>
-                <button class="dd-item" @click="printPage">
-                  <Icon name="printer" :size="15" />
-                  <span>打印 / 存为 PDF</span>
-                </button>
-                <button class="dd-item" @click="copyLink">
-                  <Icon name="copy" :size="15" />
-                  <span>复制页面链接</span>
-                </button>
-              </div>
-            </transition>
-          </div>
-
-          <button class="btn btn--icon bell" aria-label="告警中心" @click="ui.alertsOpen = true">
-            <Icon name="bell" :size="16" />
-            <span v-if="pendingAlerts" class="bell-badge num">{{ pendingAlerts }}</span>
-          </button>
-
-          <div class="dd">
-            <button class="btn btn--icon" aria-label="更多" @click="closeMenus(); moreOpen = !moreOpen">
-              <Icon name="more" :size="17" />
-            </button>
-            <div v-if="moreOpen" class="dd-backdrop" @click="moreOpen = false" />
-            <transition name="fade">
-              <div v-if="moreOpen" class="dd-menu dd-menu--right" role="menu">
-                <button class="dd-item" @click="closeMenus(); toggleFull()">
-                  <Icon :name="isFull ? 'compress' : 'expand'" :size="15" />
-                  <span>{{ isFull ? '退出全屏' : '全屏演示' }}</span>
-                </button>
-                <button class="dd-item" @click="moreOpen = false; ui.settingsOpen = true">
-                  <Icon name="settings" :size="15" />
-                  <span>偏好设置</span>
-                </button>
-                <button class="dd-item" @click="moreOpen = false; ui.shortcutsOpen = true">
-                  <Icon name="command" :size="15" />
-                  <span>快捷键</span>
-                  <span class="dd-kbd"><span class="kbd">?</span></span>
-                </button>
-                <button class="dd-item" @click="moreOpen = false; ui.commandOpen = true">
-                  <Icon name="search" :size="15" />
-                  <span>全局搜索</span>
-                  <span class="dd-kbd"><span class="kbd">Ctrl K</span></span>
-                </button>
-              </div>
-            </transition>
-          </div>
+          <InfoBar />
         </div>
       </header>
 

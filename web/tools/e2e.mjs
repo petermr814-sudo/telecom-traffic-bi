@@ -21,6 +21,19 @@ const clickText = (text, sel = 'button') =>
   }, text, sel)
 const text = (sel) => page.evaluate((s) => document.querySelector(s)?.textContent?.trim() ?? '', sel)
 const exists = (sel) => page.evaluate((s) => Boolean(document.querySelector(s)), sel)
+const ensureInfoOpen = async () => {
+  // 先等离场过渡结束，避免 .info-panel 残留导致误判为已打开
+  await sleep(250)
+  const open = await page.evaluate(() => Boolean(document.querySelector('.info-panel')))
+  if (!open) await page.click('.info-toggle')
+  await sleep(250)
+}
+const infoRow = (label) =>
+  page.evaluate((t) => {
+    const row = [...document.querySelectorAll('.info-row')].find((el) => el.textContent.includes(t))
+    if (!row) throw new Error(`info row not found: ${t}`)
+    row.click()
+  }, label)
 
 const results = []
 const check = (name, ok, detail = '') => {
@@ -36,22 +49,31 @@ await sleep(900)
 const kpi1 = await text('.kpi-value')
 check('时间范围切换改变总流量', kpi0 !== kpi1, `${kpi0} -> ${kpi1}`)
 
-await page.click('.region-btn')
-await sleep(200)
+await ensureInfoOpen()
 await page.evaluate(() => {
-  const items = [...document.querySelectorAll('.dd-menu--region .dd-item')]
+  const row = [...document.querySelectorAll('.info-row')].find((el) => el.textContent.includes('当前区域'))
+  row?.querySelector('button')?.click()
+})
+await sleep(150)
+await page.evaluate(() => {
+  const items = [...document.querySelectorAll('.region-grid__item')]
   items.find((x) => x.textContent.includes('华东'))?.click()
 })
 await sleep(900)
 const kpi2 = await text('.kpi-value')
 check('区域筛选改变总流量', kpi1 !== kpi2, `${kpi1} -> ${kpi2}`)
-check('区域按钮显示华东', (await text('.region-label')) === '华东')
+await ensureInfoOpen()
+check('区域按钮显示华东', (await text('.info-row__value--btn')).includes('华东'))
+// 面板遮罩会拦截后续点击，先收起再操作其他控件
+await page.keyboard.press('Escape')
+await sleep(300)
 
 await page.click('.compare-btn')
 const compareOn = await page.evaluate(() => document.querySelector('.compare-btn')?.classList.contains('is-on'))
 check('对比开关可切换', !compareOn)
 
-await page.click('.bell')
+await ensureInfoOpen()
+await infoRow('待处理告警')
 await sleep(500)
 check('告警抽屉打开', await exists('.drawer'))
 await clickText('全部确认')
@@ -74,7 +96,7 @@ check('命令面板跳转资源页', (await page.evaluate(() => location.hash)) 
 
 const rowCountBefore = await page.evaluate(() => document.querySelectorAll('.table tbody tr').length)
 await clickText('预警小区')
-await sleep(500)
+await sleep(1100)
 const statuses = await page.evaluate(() =>
   [...document.querySelectorAll('.table tbody tr .chip')].map((x) => x.textContent.trim()).filter((x) => x.includes('预警') || x.includes('拥塞'))
 )
