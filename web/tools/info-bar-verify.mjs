@@ -107,9 +107,35 @@ try {
   await sleep(400)
   const reopened = await page.evaluate(() => {
     const wrap = document.querySelector('.info-section__collapse')
-    return wrap.classList.contains('is-open') && wrap.getBoundingClientRect().height > 100
+    return wrap.getBoundingClientRect().height > 100
   })
   check('分区展开恢复原高度', reopened)
+
+  // 系统「减少动画」偏好下仍平滑拉伸：JS 补间不受全局 CSS transition 归零影响
+  await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
+  await sleep(80)
+  await page.evaluate(() => {
+    const head = [...document.querySelectorAll('.info-section__head')].find(h => h.textContent.includes('快捷操作'))
+    head?.click()
+  })
+  const reduceSamples = await page.evaluate(async () => {
+    const wrap = document.querySelectorAll('.info-section__collapse')[1]
+    const out = []
+    const start = performance.now()
+    await new Promise(resolve => {
+      const tick = () => {
+        out.push({ t: performance.now() - start, h: wrap.getBoundingClientRect().height })
+        if (performance.now() - start < 450) requestAnimationFrame(tick)
+        else resolve()
+      }
+      requestAnimationFrame(tick)
+    })
+    return out
+  })
+  const reduceHeights = new Set(reduceSamples.map(s => Math.round(s.h * 10))).size
+  check('减少动画偏好下仍平滑拉伸', reduceHeights >= 10 && reduceSamples[reduceSamples.length - 1].h < 2, { frames: reduceHeights, end: reduceSamples[reduceSamples.length - 1].h })
+  await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }])
+  await sleep(80)
   await page.screenshot({ path: resolve(out, 'region-switched.png') })
 
   // 滚动页面，面板保持不动（fixed）

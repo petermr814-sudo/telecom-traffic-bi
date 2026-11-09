@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import Icon from './Icon.vue'
 import { api } from '@/api/client'
 import { REGIONS, refresh, toast, ui } from '@/stores/ui'
@@ -9,6 +9,39 @@ const regionOpen = ref(false)
 const statusOpen = ref(true)
 const actionsOpen = ref(true)
 const isFull = ref(false)
+
+// 折叠分区的高度补间：JS 驱动而非 CSS 过渡，避免系统「减少动画」偏好
+// 把全局 transition-duration 归零导致拉伸消失（与遮罩动画同一套机制）
+const statusWrap = ref<HTMLElement | null>(null)
+const actionsWrap = ref<HTMLElement | null>(null)
+const statusH = ref('auto')
+const actionsH = ref('auto')
+let collapseRaf = 0
+
+const quadEaseInOut = (p: number) => (p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2)
+
+function tweenCollapse(wrap: HTMLElement, open: boolean, setH: (v: string) => void) {
+  cancelAnimationFrame(collapseRaf)
+  const inner = wrap.querySelector<HTMLElement>('.info-section__inner')
+  if (!inner) return
+  const from = wrap.offsetHeight
+  const target = open ? inner.scrollHeight : 0
+  if (Math.abs(from - target) < 1) {
+    setH(open ? 'auto' : '0px')
+    return
+  }
+  const start = performance.now()
+  const step = (now: number) => {
+    const p = Math.min(1, (now - start) / 260)
+    const eased = quadEaseInOut(p)
+    setH(`${from + (target - from) * eased}px`)
+    if (p < 1) collapseRaf = requestAnimationFrame(step)
+    else setH(open ? 'auto' : '0px')
+  }
+  collapseRaf = requestAnimationFrame(step)
+}
+watch(statusOpen, open => { if (statusWrap.value) tweenCollapse(statusWrap.value, open, v => statusH.value = v) })
+watch(actionsOpen, open => { if (actionsWrap.value) tweenCollapse(actionsWrap.value, open, v => actionsH.value = v) })
 
 const regionLabel = computed(() => (ui.region === 'all' ? '全国' : ui.region))
 const modeLabel = api.mode === 'api' ? '真实接口' : '本地模拟'
@@ -21,7 +54,10 @@ function onFullscreenChange() {
   isFull.value = Boolean(document.fullscreenElement)
 }
 onMounted(() => document.addEventListener('fullscreenchange', onFullscreenChange))
-onUnmounted(() => document.removeEventListener('fullscreenchange', onFullscreenChange))
+onUnmounted(() => {
+  document.removeEventListener('fullscreenchange', onFullscreenChange)
+  cancelAnimationFrame(collapseRaf)
+})
 
 function close() {
   ui.infoOpen = false
@@ -80,7 +116,7 @@ async function copyLink() {
             <span>运行状态</span>
             <Icon class="info-section__chevron" name="chevron-down" :size="14" />
           </button>
-          <div class="info-section__collapse" :class="{ 'is-open': statusOpen }">
+          <div ref="statusWrap" class="info-section__collapse" :style="{ height: statusH }">
             <div class="info-section__inner">
               <div class="info-section__body">
                 <div class="info-row">
@@ -125,7 +161,7 @@ async function copyLink() {
             <span>快捷操作</span>
             <Icon class="info-section__chevron" name="chevron-down" :size="14" />
           </button>
-          <div class="info-section__collapse" :class="{ 'is-open': actionsOpen }">
+          <div ref="actionsWrap" class="info-section__collapse" :style="{ height: actionsH }">
             <div class="info-section__inner">
               <div class="info-section__body">
                 <button class="info-row" @click="run(onRefresh)"><span class="info-row__label"><Icon name="refresh" :size="13" />刷新数据</span><span class="info-row__hint">R</span></button>
@@ -266,14 +302,9 @@ async function copyLink() {
 .info-section__head[aria-expanded='false'] .info-section__chevron {
   transform: rotate(-90deg);
 }
-/* 折叠分区的平滑高度拉伸：grid-rows 0fr↔1fr 过渡，二次贝塞尔缓动 */
+/* 折叠分区：高度由 JS 补间驱动（tweenCollapse），这里只负责裁切 */
 .info-section__collapse {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 0.26s cubic-bezier(0.333, 0.667, 0.667, 1);
-}
-.info-section__collapse.is-open {
-  grid-template-rows: 1fr;
+  overflow: hidden;
 }
 .info-section__inner {
   overflow: hidden;
