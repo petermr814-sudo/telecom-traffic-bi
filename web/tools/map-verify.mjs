@@ -19,7 +19,25 @@ async function selectCity(city) { await page.evaluate(name => document.querySele
 async function switchCity(city) {
   // The city switcher is the custom Select listbox (teleported to body), not a native select.
   await page.click('button[aria-label="切换城市"]')
-  await page.waitForSelector('.sel__menu .sel__option', { visible: true })
+  try {
+    await page.waitForSelector('.sel__menu .sel__option', { visible: true, timeout: 8000 })
+  } catch (e) {
+    console.log('DIAG switchCity failed:', JSON.stringify(await page.evaluate(() => {
+      const btn = document.querySelector('button[aria-label="切换城市"]')
+      const r = btn?.getBoundingClientRect()
+      const hit = r ? document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) : null
+      return {
+        drawer: Boolean(document.querySelector('.drawer')),
+        infoPanel: Boolean(document.querySelector('.info-panel')),
+        menu: Boolean(document.querySelector('.sel__menu')),
+        btn: Boolean(btn),
+        hit: hit ? { cls: hit.className, tag: hit.tagName } : null,
+        selOpen: document.querySelector('.sel')?.className ?? null,
+        view: document.querySelector('.traffic-scene')?.dataset.view ?? null
+      }
+    })))
+    throw e
+  }
   await page.evaluate(name => {
     const option = [...document.querySelectorAll('.sel__menu .sel__option')].find(el => el.textContent.trim().startsWith(name))
     if (!option) throw new Error(`切换城市下拉中找不到 ${name}`)
@@ -72,6 +90,8 @@ try {
   await sleep(400)
   check('Top cell opens detail drawer', await page.evaluate(() => document.body.textContent.includes('杭州') && !!document.querySelector('.drawer')))
   await page.keyboard.press('Escape')
+  // 等抽屉离场动画结束再操作，避免点击落在离场遮罩上
+  await sleep(400)
   await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }])
   await switchCity('成都')
   await sleep(100)

@@ -35,7 +35,7 @@ const good = computed(() => props.delta === undefined || props.delta === 0 ? nul
 </template>
 
 <style scoped>
-.kpi { min-width: 0; padding: 24px 26px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.kpi { min-width: 0; padding: 24px 26px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); filter: drop-shadow(0 6px 18px rgba(13, 22, 41, 0.05)); }
 .kpi-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text-3); }
 .kpi-label { color: var(--text-2); font-size: 13px; }
 .kpi-value { display: flex; align-items: baseline; gap: 8px; margin-top: 18px; line-height: 1.1; min-height: 46.2px; }
