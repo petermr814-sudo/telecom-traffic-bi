@@ -66,7 +66,7 @@ try {
   check('City search filters results', await page.$$eval('.city-row', els => els.length === 1 && els[0].dataset.city === '杭州'))
   await page.click('.city-row')
   await settled('杭州')
-  await page.click('.map-metrics button:nth-child(2)')
+  await page.click('.map-metrics button[data-key="users"]')
   check('Metric switch preserves selected city', await page.$eval('.traffic-scene', el => el.dataset.metric === 'users' && el.dataset.view === '杭州'))
   await page.evaluate(() => { document.querySelectorAll('.city-analysis .chart-box')[2].__chart.trigger('click', { dataIndex: 0 }) })
   await sleep(400)
