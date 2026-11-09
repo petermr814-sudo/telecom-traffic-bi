@@ -80,6 +80,13 @@ await clickText('全部确认')
 await sleep(300)
 const ackToast = await exists('.toast--success')
 check('告警可批量确认', ackToast)
+const toastPos = await page.evaluate(() => {
+  const stack = document.querySelector('.toast-stack')
+  if (!stack) return null
+  const rect = stack.getBoundingClientRect()
+  return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, vw: innerWidth, vh: innerHeight }
+})
+check('Toast 通知居中显示', Boolean(toastPos) && Math.abs(toastPos.x - toastPos.vw / 2) < 12 && Math.abs(toastPos.y - toastPos.vh / 2) < 12, toastPos)
 await page.keyboard.press('Escape')
 await sleep(300)
 

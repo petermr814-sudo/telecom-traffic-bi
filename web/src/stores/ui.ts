@@ -28,6 +28,8 @@ function readSettings(): Settings {
 }
 
 let toastId = 0
+// 居中 Toast 会遮挡画面中心，最多同时保留 4 条，避免连续操作铺满屏幕
+const MAX_TOASTS = 4
 
 export const ui = reactive({
   range: 'today' as RangeKey,
@@ -59,6 +61,7 @@ export const REGIONS: RegionKey[] = ['all', '华北', '东北', '华东', '华�
 export function toast(type: Toast['type'], title: string, desc?: string) {
   const item: Toast = { id: ++toastId, type, title, desc }
   ui.toasts.push(item)
+  if (ui.toasts.length > MAX_TOASTS) ui.toasts.splice(0, ui.toasts.length - MAX_TOASTS)
   window.setTimeout(() => {
     const i = ui.toasts.findIndex((t) => t.id === item.id)
     if (i >= 0) ui.toasts.splice(i, 1)

@@ -32,15 +32,22 @@ const icons: Record<Toast['type'], string> = {
 <style scoped>
 .toast-stack {
   position: fixed;
-  right: 20px;
-  bottom: 20px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   z-index: 200;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: 340px;
-  max-width: calc(100vw - 40px);
+  width: min(380px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
   pointer-events: none;
+  scrollbar-width: none;
+}
+
+.toast-stack::-webkit-scrollbar {
+  display: none;
 }
 
 .toast {
@@ -113,12 +120,16 @@ const icons: Record<Toast['type'], string> = {
 
 .toast-enter-active,
 .toast-leave-active {
-  transition: all 0.22s ease;
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
 .toast-enter-from,
 .toast-leave-to {
   opacity: 0;
-  transform: translateX(16px);
+  transform: translateY(8px) scale(0.97);
+}
+
+.toast-move {
+  transition: transform 0.2s ease;
 }
 </style>
