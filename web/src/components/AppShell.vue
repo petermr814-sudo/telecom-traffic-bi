@@ -183,7 +183,7 @@ onUnmounted(() => {
 
         <div class="actions">
           <template v-if="!meta.hideFilters">
-            <div v-if="!meta.hideRange" class="seg" role="group" aria-label="时间范围">
+            <div v-if="!meta.hideRange" v-seg-mask class="seg" role="group" aria-label="时间范围">
               <button
                 v-for="r in RANGE_OPTIONS"
                 :key="r.key"

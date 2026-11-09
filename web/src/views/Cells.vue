@@ -264,7 +264,7 @@ onUnmounted(() => {
       </Panel>
       <Panel ref="scatterPanel" class="scatter-panel" :data-template="scatterView === 'strip' ? 'G15' : 'G9'" :title="scatterView === 'strip' ? '按网络制式看利用率' : '用户数 × 利用率'" :sub="scatterView === 'strip' ? '每点为一个小区 · 纵向错开仅用于辨认' : '气泡面积表示日流量 · 点击查看小区'">
         <template #actions>
-          <div class="seg seg--sm" role="group" aria-label="图表维度"><button class="seg__item" :class="{ 'is-active': scatterView === 'strip' }" :aria-pressed="scatterView === 'strip'" @click="switchScatter('strip', $event)">制式分布</button><button class="seg__item" :class="{ 'is-active': scatterView === 'users' }" :aria-pressed="scatterView === 'users'" @click="switchScatter('users', $event)">用户规模</button></div>
+          <div v-seg-mask class="seg seg--sm" role="group" aria-label="图表维度"><button class="seg__item" :class="{ 'is-active': scatterView === 'strip' }" :aria-pressed="scatterView === 'strip'" @click="switchScatter('strip', $event)">制式分布</button><button class="seg__item" :class="{ 'is-active': scatterView === 'users' }" :aria-pressed="scatterView === 'users'" @click="switchScatter('users', $event)">用户规模</button></div>
         </template>
         <BaseChart ref="scatterChart" :option="scatterOption" :loading="loading && !data" height="250px" :replace-merge="['series', 'xAxis', 'yAxis']" @chart-click="onScatterClick" />
         <p class="chart-note">展示全部 {{ rows.length }} 个小区 · 红点为拥塞小区</p>
@@ -279,7 +279,7 @@ onUnmounted(() => {
             <Icon name="search" :size="14" />
             <input v-model="q" class="input" placeholder="搜索小区 / 城市 / 编号" aria-label="搜索小区" />
           </div>
-          <div class="seg seg--sm">
+          <div v-seg-mask class="seg seg--sm">
             <button class="seg__item" :class="{ 'is-active': gen === 'all' }" @click="gen = 'all'">全部</button>
             <button class="seg__item" :class="{ 'is-active': gen === '5G' }" @click="gen = '5G'">5G</button>
             <button class="seg__item" :class="{ 'is-active': gen === '4G' }" @click="gen = '4G'">4G</button>

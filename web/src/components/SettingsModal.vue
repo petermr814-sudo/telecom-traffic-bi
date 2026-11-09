@@ -94,7 +94,7 @@ function reset() {
       <div class="section-head">
         <h4>自动刷新</h4>
       </div>
-      <div class="seg">
+      <div v-seg-mask class="seg">
         <button
           v-for="o in autoOptions"
           :key="o.value"

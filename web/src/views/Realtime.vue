@@ -254,7 +254,7 @@ const totalMsg = computed(() => msgRate.value.toFixed(1))
         </div>
       </div>
       <div class="rt-actions">
-        <div class="seg">
+        <div v-seg-mask class="seg">
           <button class="seg__item" :class="{ 'is-active': speed === 1 }" @click="setSpeed(1)">1×</button>
           <button class="seg__item" :class="{ 'is-active': speed === 2 }" @click="setSpeed(2)">2×</button>
         </div>

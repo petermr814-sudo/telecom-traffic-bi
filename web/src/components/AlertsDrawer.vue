@@ -55,7 +55,7 @@ function gotoCell(a: Alert) {
 <template>
   <Drawer :open="ui.alertsOpen" title="告警中心" sub="按忙时利用率与流量异常实时聚合" width="480px" @close="ui.alertsOpen = false">
     <div class="toolbar">
-      <div class="seg">
+      <div v-seg-mask class="seg">
         <button
           v-for="t in ['全部', '待处理', '已确认'] as const"
           :key="t"
