@@ -19,7 +19,7 @@ defineEmits<{ (e: 'retry'): void }>()
       <div>
         <h3 class="panel-title">
           <slot name="icon" />
-          {{ title }}
+          <slot name="title">{{ title }}</slot>
           <span v-if="$slots.tag" class="panel-tag"><slot name="tag" /></span>
         </h3>
         <p v-if="sub" class="panel-sub">{{ sub }}</p>

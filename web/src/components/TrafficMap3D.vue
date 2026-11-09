@@ -18,6 +18,7 @@ const labelLayer = ref<HTMLDivElement>()
 const loading = ref(true)
 const error = ref('')
 const moving = ref(false)
+const zooming = ref(false)
 const insetPaths = ref<string[]>([])
 const selectedCity = computed(() => props.cities.find(c => c.name === props.selected))
 let renderer: THREE.WebGLRenderer | undefined
@@ -290,6 +291,7 @@ function flyToCity(instant = false) {
   const direction = camera.position.clone().sub(controls.target).normalize()
   const distance = fitMapDistance(camera, bounds, target, direction)
   cameraMotion.focus(target, distance, instant || reduced.matches)
+  zooming.value = false
   controls.enableDamping = !cameraMotion.active && !reduced.matches
   controls.update()
   cameraReady = true
@@ -340,6 +342,7 @@ function tick(now: number) {
   if (cameraMotion?.active) {
     cameraMotion.step(dt)
     setMoving(cameraMotion.active)
+    zooming.value = cameraMotion.zooming
     controls.enableDamping = !cameraMotion.active && !reduced.matches
     dirty = true
   }
@@ -374,7 +377,7 @@ function resize() {
   // Initial framing is immediate. Later resizing preserves a manually adjusted
   // pose; an active flight simply updates its fit without resetting velocity.
   if (!cameraReady) flyToCity(true)
-  else if (cameraMotion?.active) flyToCity()
+  else if (cameraMotion?.focusing) flyToCity()
   dirty = true
   wake()
 }
@@ -397,6 +400,7 @@ function onMove(event: PointerEvent) {
 }
 function cancelFlight() {
   cameraMotion?.stop()
+  zooming.value = false
   if (controls) controls.enableDamping = !reduced.matches
   setMoving(false)
 }
@@ -411,20 +415,19 @@ function resetView() {
   else flyToCity()
 }
 function zoom(factor: number) {
-  if (!controls) return
-  cancelFlight()
+  if (!controls || !cameraMotion) return
   clearOrbitInertia()
-  const offset = camera.position.clone().sub(controls.target)
-  offset.setLength(THREE.MathUtils.clamp(offset.length() * factor, controls.minDistance, controls.maxDistance))
-  camera.position.copy(controls.target).add(offset)
+  cameraMotion.zoomBy(factor, reduced.matches)
+  zooming.value = cameraMotion.zooming
+  setMoving(cameraMotion.active)
   controls.update()
-  controls.enableDamping = !reduced.matches
+  controls.enableDamping = !cameraMotion.active && !reduced.matches
   dirty = true
   wake()
 }
 function onVisibility() { lastNow = 0; if (!document.hidden) { dirty = true; wake() } }
 function onMotionChange() {
-  if (cameraMotion?.active && reduced.matches) { cameraMotion.finish(); setMoving(false) }
+  if (cameraMotion?.active && reduced.matches) { cameraMotion.finish(); setMoving(false); zooming.value = false }
   if (controls) controls.enableDamping = !reduced.matches && !cameraMotion?.active
   dirty = true
   wake()
@@ -567,7 +570,7 @@ onUnmounted(() => {
     </div>
     <div class="scene-compass" aria-hidden="true"><span>N</span><i /></div>
     <div v-if="!selected && insetPaths.length" class="south-sea" aria-label="南海诸岛"><svg viewBox="0 0 95 105"><path v-for="(d, i) in insetPaths" :key="i" :d="d" /></svg><span>南海诸岛</span></div>
-    <div class="scene-caption"><Icon :name="moving ? 'target' : 'map'" :size="13" /><span>{{ moving ? `正在聚焦${selected || '全国'}…` : selected ? '已定位城市 · 拖动调整视角' : '点击城市探索 · 拖动旋转 · 滚轮缩放' }}</span></div>
+    <div class="scene-caption"><Icon :name="moving ? 'target' : 'map'" :size="13" /><span>{{ moving ? zooming ? '正在缩放视图…' : `正在聚焦${selected || '全国'}…` : selected ? '已定位城市 · 拖动调整视角' : '点击城市探索 · 拖动旋转 · 滚轮缩放' }}</span></div>
     <div v-if="loading || error" class="scene-message" role="status"><Icon :name="error ? 'info' : 'globe'" :size="28" /><span>{{ error || '正在加载真实高程地形…' }}</span></div>
   </div>
 </template>

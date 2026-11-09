@@ -104,6 +104,88 @@ check('Rapid opposite selections keep zoom within the control limits', () => {
   settle(motion)
 })
 
+check('Zoom buttons leave the live pose untouched and advance smoothly along its orbit', () => {
+  const { camera, target, motion } = rig()
+  const position = camera.position.clone(), centre = target.clone()
+  const start = camera.position.distanceTo(target)
+  const direction = camera.position.clone().sub(target).normalize()
+  motion.zoomBy(.78)
+  near(camera.position, position)
+  near(target, centre)
+  assert.ok(motion.zooming && !motion.focusing)
+  motion.step(1 / 60)
+  const intermediate = camera.position.distanceTo(target)
+  assert.ok(intermediate < start && intermediate > start * .78)
+  near(camera.position.clone().sub(target).normalize(), direction)
+  settle(motion)
+  near(target, centre)
+  assert.ok(Math.abs(camera.position.distanceTo(target) - start * .78) < 1e-8)
+})
+
+check('Rapid zoom presses accumulate distance without resetting position or velocity', () => {
+  const { camera, target, motion } = rig()
+  const start = camera.position.distanceTo(target)
+  motion.zoomBy(.78)
+  motion.step(.06)
+  const position = camera.position.clone(), velocity = motion.zoomVelocity
+  motion.zoomBy(.78)
+  near(camera.position, position)
+  assert.equal(motion.zoomVelocity, velocity)
+  motion.step(1e-6)
+  assert.ok(Math.abs((Math.log(camera.position.distanceTo(target)) - Math.log(position.distanceTo(target))) / 1e-6 - velocity) < .001)
+  settle(motion)
+  assert.ok(Math.abs(camera.position.distanceTo(target) - start * .78 ** 2) < 1e-8)
+})
+
+check('Zoom during a city flight starts from the current position and holds its current centre', () => {
+  const { camera, target, motion } = rig()
+  motion.focus(new Vector3(35, .5, 20), 5)
+  motion.step(.15)
+  const position = camera.position.clone(), centre = target.clone(), radius = position.distanceTo(centre)
+  motion.zoomBy(1.28)
+  near(camera.position, position)
+  assert.ok(!motion.focusing)
+  settle(motion)
+  near(target, centre)
+  assert.ok(Math.abs(camera.position.distanceTo(target) - radius * 1.28) < 1e-8)
+})
+
+check('Manual interruption makes the next zoom read the newly rotated and panned pose', () => {
+  const { camera, target, motion } = rig()
+  motion.zoomBy(.78)
+  motion.step(.1)
+  motion.stop()
+  target.set(5, .7, -8)
+  const direction = new Vector3(-.6, .7, -.4).normalize()
+  camera.position.copy(target).addScaledVector(direction, 14)
+  const position = camera.position.clone(), centre = target.clone()
+  motion.zoomBy(1.28)
+  near(camera.position, position)
+  settle(motion)
+  near(target, centre)
+  near(camera.position.clone().sub(target).normalize(), direction)
+  assert.ok(Math.abs(camera.position.distanceTo(target) - 14 * 1.28) < 1e-8)
+})
+
+check('Zoom remains consistent across frame rates and respects distance and reduced-motion limits', () => {
+  const poses = [30, 60, 144].map(fps => {
+    const { camera, motion } = rig()
+    motion.zoomBy(.78)
+    for (let i = 0; i < fps / 4; i++) motion.step(.25 / Math.ceil(fps / 4))
+    return camera.position.clone()
+  })
+  poses.slice(1).forEach(pose => near(pose, poses[0]))
+  const { camera, target, motion } = rig()
+  for (const factor of [.0001, 10000]) {
+    motion.zoomBy(factor)
+    settle(motion)
+    assert.ok(camera.position.distanceTo(target) >= 1.5 - 1e-8 && camera.position.distanceTo(target) <= 270 + 1e-8)
+  }
+  motion.zoomBy(.78, true)
+  assert.ok(!motion.active)
+  assert.ok(Math.abs(camera.position.distanceTo(target) - 270 * .78) < 1e-8)
+})
+
 const geo = JSON.parse(await readFile(new URL('../public/geo/cities.json', import.meta.url), 'utf8'))
 const manifest = JSON.parse(await readFile(new URL('../public/geo/terrain/manifest.json', import.meta.url), 'utf8'))
 const mercator = v => Math.log(Math.tan(Math.PI / 4 + v * Math.PI / 360)) * 180 / Math.PI
