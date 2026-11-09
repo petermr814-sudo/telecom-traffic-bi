@@ -32,7 +32,9 @@ export CHROME_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome
 | `node tools/template-verify.mjs` | 检查日期与当天数据一致、构成合计、热力读数、连续分箱、全量小区、鼠标详情和消息份额；详情截图到 `docs/layout-check/` |
 | `node tools/hourly-verify.mjs` | 时段分析专项：圆环跟随选中日期标注峰值、遮罩层选中/切换动画、展开详情无横向位移；截图到 `docs/hourly-check/` |
 | `node tools/map-verify.mjs` | 3D 地图聚焦、连续切城、范围联动、数据核对、搜索、返回、移动布局及离线交互；截图到 `docs/map-check/`，默认端口 5400，可用 SHOT_BASE 覆盖 |
+| `node tools/camera-motion-verify.mjs` | 实时镜头的朝向继承、切城速度连续性、帧率一致性、接管/减少动画与全部城市的视锥取景；无需启动浏览器 |
 | `node tools/page-transition-verify.mjs` | 页面切换动画：离开/进入的移动轨迹、二次贝塞尔缓动、透明度同步、残留清理与减少动态效果；截图到 `docs/layout-check/page-switch/` |
+| `node tools/mask-verify.mjs` | 时段页日期遮罩：滑动连续性、方向与终点、透明度同步、二次缓动轨迹拟合、减少动画偏好下仍可滑动；截图到 `docs/layout-check/mask-switch/` |
 | `node tools/prepare-city-geo.mjs` | 从 DataV 更新演示数据覆盖的 60 座城市边界，仅资源更新时需要联网 |
 
 以上脚本默认访问 `http://127.0.0.1:5178/`，可用 `SHOT_BASE` 覆盖：

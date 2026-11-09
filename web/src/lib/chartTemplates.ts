@@ -115,7 +115,7 @@ export function dotHeatOption(values: number[][], hours: string[], days: string[
         // 因此矩形必须显式带 r: 0 抵消污染
         const maskY = heatBandY(api, anim.maskRow, lastD)
         const children: any[] = [
-          { type: 'rect', shape: { x: x - width / 2, y: maskY - height / 2, width, height, r: 0 }, style: { fill: anim.maskAlpha > 0 ? `rgba(51,78,172,${(.045 * anim.maskAlpha).toFixed(3)})` : 'transparent' } },
+          { type: 'rect', shape: { x: x - width / 2, y: maskY - height / 2, width, height, r: 0 }, style: { fill: anim.maskAlpha > 0 ? `rgba(51,78,172,${(.1 * anim.maskAlpha).toFixed(3)})` : 'transparent' } },
           { type: 'circle', shape: { cx: x, cy: y, r: value > 0 ? radius : 1 }, style: { fill: value > 0 ? api.visual('color') : '#dce3ec', opacity } },
         ]
         if (params.dataIndex === ringAnchor) {

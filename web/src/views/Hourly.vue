@@ -72,13 +72,18 @@ const pickerMaskStyle = computed(() => ({
   transform: `translateY(calc(${daily.value.length - 1 - anim.maskRow} * 100%))`,
   opacity: String(anim.maskAlpha),
 }))
-const reduceMotion = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 let animRaf = 0
 let animInited = false
 
+// 二次缓动：前半段 2p²、后半段 1-2(1-p)²，等价于在 0.5 处拼接的两段二次贝塞尔，
+// 比三次缓出更「有存在感」，滑动两端都能明显感知
+function quadEaseInOut(p: number) {
+  return p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2
+}
+
 function tweenAnim(target: HeatAnim) {
   cancelAnimationFrame(animRaf)
-  if (!animInited || reduceMotion) {
+  if (!animInited) {
     Object.assign(anim, target)
     animInited = true
     return
@@ -86,8 +91,8 @@ function tweenAnim(target: HeatAnim) {
   const from = { ...anim }
   const start = performance.now()
   const step = (now: number) => {
-    const progress = Math.min(1, (now - start) / 380)
-    const eased = 1 - (1 - progress) ** 3
+    const progress = Math.min(1, (now - start) / 440)
+    const eased = quadEaseInOut(progress)
     anim.maskRow = from.maskRow + (target.maskRow - from.maskRow) * eased
     anim.maskAlpha = from.maskAlpha + (target.maskAlpha - from.maskAlpha) * eased
     anim.ringH = from.ringH + (target.ringH - from.ringH) * eased
@@ -235,6 +240,8 @@ onUnmounted(() => {
   border: 1px solid var(--primary-border);
   border-radius: 8px;
   background: var(--primary-soft);
+  box-shadow: 0 3px 10px rgba(51, 78, 172, 0.16);
+  will-change: transform;
   pointer-events: none;
   z-index: 0;
 }
