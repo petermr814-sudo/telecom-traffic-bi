@@ -43,8 +43,7 @@ export const ui = reactive({
   alertsOpen: false,
   settingsOpen: false,
   shortcutsOpen: false,
-  cellDetail: null as CellRow | null,
-  sidebarCollapsed: false
+  cellDetail: null as CellRow | null
 })
 
 export const isLoading = computed(() => ui.loadingCount > 0)

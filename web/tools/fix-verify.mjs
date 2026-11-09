@@ -163,17 +163,16 @@ await sleep(2600)
 const live2 = await page.evaluate(() => document.querySelector('.chart-box').__chart.getOption().series[0].data.at(-1))
 check('实时曲线持续刷新', live1 !== live2, `${live1} -> ${live2}`)
 
-// ---------- 侧栏折叠 / 展开 / 标签 ----------
-const collapsed = () => page.evaluate(() => document.querySelector('.shell')?.classList.contains('is-collapsed'))
-await page.click('.collapse-btn')
-await sleep(300)
-check('侧栏可折叠', await collapsed())
-const hiddenText = await page.evaluate(() => getComputedStyle(document.querySelector('.nav-text')).display)
-const tipContent = await page.evaluate(() => getComputedStyle(document.querySelector('.nav-item'), '::after').content)
-check('折叠后图标有文字提示', hiddenText === 'none' && tipContent.includes('运营总览'), `text=${hiddenText} tip=${tipContent}`)
-await page.click('.collapse-row')
-await sleep(300)
-check('侧栏可重新展开', !(await collapsed()))
+// ---------- 侧栏精简：无折叠入口 / 连接状态 / 账户区 ----------
+const sidebarLegacy = await page.evaluate(() => ({
+  collapseBtn: Boolean(document.querySelector('.collapse-btn')),
+  collapseRow: Boolean(document.querySelector('.collapse-row')),
+  connCard: Boolean(document.querySelector('.conn-card')),
+  userBlock: Boolean(document.querySelector('.sidebar-foot .user')),
+  brand: document.querySelector('.brand-text strong')?.textContent?.trim() ?? ''
+}))
+check('侧栏已移除折叠/连接状态/账户区', !sidebarLegacy.collapseBtn && !sidebarLegacy.collapseRow && !sidebarLegacy.connCard && !sidebarLegacy.userBlock, sidebarLegacy)
+check('品牌字标保留', sidebarLegacy.brand === 'TeleScope', sidebarLegacy.brand)
 
 console.log('\nERRORS:', errors.length, errors.slice(0, 4))
 const failed = results.filter((r) => !r.ok)

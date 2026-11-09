@@ -129,7 +129,8 @@ check('作业重跑有反馈', runningToast > 0)
 
 await page.goto(`${BASE}#/overview`, { waitUntil: 'networkidle0' })
 await sleep(900)
-await page.click('.conn-btn')
+await ensureInfoOpen()
+await infoRow('偏好设置')
 await sleep(300)
 check('设置弹窗打开', await exists('.modal'))
 await page.evaluate(() => {

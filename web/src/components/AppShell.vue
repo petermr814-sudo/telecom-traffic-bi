@@ -44,22 +44,14 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="shell" :class="{ 'is-collapsed': ui.sidebarCollapsed }">
+  <div class="shell">
     <aside class="sidebar no-print">
-      <div
-        class="brand"
-        :class="{ 'brand--expandable': ui.sidebarCollapsed }"
-        :title="ui.sidebarCollapsed ? '点击展开侧栏' : undefined"
-        @click="ui.sidebarCollapsed && (ui.sidebarCollapsed = false)"
-      >
+      <div class="brand">
         <img class="brand-mark" src="/brand/telescope-mark-128.png" width="34" height="34" alt="" decoding="async" />
         <div class="brand-text">
           <strong><span class="brand-tele">Tele</span><span class="brand-scope">Scope</span></strong>
           <span>电信流量运营平台</span>
         </div>
-        <button class="collapse-btn" :aria-label="ui.sidebarCollapsed ? '展开侧栏' : '收起侧栏'" @click.stop="ui.sidebarCollapsed = !ui.sidebarCollapsed">
-          <Icon :name="ui.sidebarCollapsed ? 'chevron-right' : 'chevron-left'" :size="15" />
-        </button>
       </div>
 
       <nav class="nav" aria-label="主导航">
@@ -71,7 +63,6 @@ onUnmounted(() => {
             :to="item.to"
             class="nav-item"
             :class="{ 'is-active': route.path === item.to }"
-            :title="ui.sidebarCollapsed ? item.label : undefined"
             :data-label="item.label"
             :aria-label="item.label"
           >
@@ -81,39 +72,6 @@ onUnmounted(() => {
           </RouterLink>
         </div>
       </nav>
-
-      <div class="sidebar-foot">
-        <button
-          class="collapse-row"
-          :title="ui.sidebarCollapsed ? '展开侧栏' : '收起侧栏'"
-          :aria-label="ui.sidebarCollapsed ? '展开侧栏' : '收起侧栏'"
-          @click="ui.sidebarCollapsed = !ui.sidebarCollapsed"
-        >
-          <Icon :name="ui.sidebarCollapsed ? 'chevron-right' : 'chevron-left'" :size="14" />
-          <span>收起侧栏</span>
-        </button>
-        <div class="conn-card" role="status">
-          <div class="conn-row">
-            <span class="dot dot--pulse conn-dot" />
-            <span class="conn-title">数据连接正常</span>
-          </div>
-          <p class="conn-meta">Mock 演示数据 · 契约 v1</p>
-          <button class="conn-btn" @click="ui.settingsOpen = true">
-            切换真实后端
-            <Icon name="chevron-right" :size="13" />
-          </button>
-        </div>
-        <div class="user">
-          <div class="avatar">运</div>
-          <div class="user-text">
-            <strong>运营分析中心</strong>
-            <span>全网视图 · 只读</span>
-          </div>
-          <button class="icon-mini" aria-label="设置" @click="ui.settingsOpen = true">
-            <Icon name="settings" :size="15" />
-          </button>
-        </div>
-      </div>
     </aside>
 
     <div class="main">
@@ -183,10 +141,6 @@ onUnmounted(() => {
   transition: grid-template-columns 0.2s ease;
 }
 
-.shell.is-collapsed {
-  --sidebar-w: 76px;
-}
-
 .sidebar {
   position: sticky;
   top: 0;
@@ -208,14 +162,6 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-.brand--expandable {
-  cursor: pointer;
-}
-
-.brand--expandable:hover .brand-mark {
-  transform: scale(1.08);
-}
-
 .brand-mark {
   width: 34px;
   height: 34px;
@@ -223,7 +169,6 @@ onUnmounted(() => {
   flex-shrink: 0;
   object-fit: contain;
   filter: drop-shadow(0 2px 5px rgba(20, 130, 145, 0.14));
-  transition: transform 0.16s ease;
 }
 
 .brand-text {
@@ -255,22 +200,6 @@ onUnmounted(() => {
   color: var(--text-3);
   margin-top: 2px;
   letter-spacing: 0.02em;
-}
-
-.collapse-btn {
-  margin-left: auto;
-  width: 24px;
-  height: 24px;
-  display: grid;
-  place-items: center;
-  border-radius: 6px;
-  color: var(--text-3);
-  flex-shrink: 0;
-}
-
-.collapse-btn:hover {
-  background: var(--surface-3);
-  color: var(--text);
 }
 
 .nav {
@@ -328,32 +257,6 @@ onUnmounted(() => {
   background: var(--primary);
 }
 
-.is-collapsed .nav-item::after {
-  content: attr(data-label);
-  position: absolute;
-  left: calc(100% + 10px);
-  top: 50%;
-  transform: translateY(-50%) translateX(-4px);
-  padding: 5px 9px;
-  border-radius: 6px;
-  background: #0c1526;
-  color: #fff;
-  font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease, transform 0.15s ease;
-  box-shadow: 0 8px 22px rgba(8, 15, 30, 0.28);
-  z-index: 80;
-}
-
-.is-collapsed .nav-item:hover::after,
-.is-collapsed .nav-item:focus-visible::after {
-  opacity: 1;
-  transform: translateY(-50%) translateX(0);
-}
-
 .nav-text {
   white-space: nowrap;
 }
@@ -371,134 +274,6 @@ onUnmounted(() => {
 
 .nav-item.is-active .live-tag {
   color: var(--green);
-}
-
-.sidebar-foot {
-  padding: 10px;
-  border-top: 1px solid var(--border);
-}
-
-.collapse-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  height: 30px;
-  padding: 0 8px;
-  margin-bottom: 8px;
-  border-radius: 6px;
-  color: var(--text-3);
-  font-size: 11.5px;
-}
-
-.collapse-row:hover {
-  background: var(--surface-2);
-  color: var(--text);
-}
-
-.is-collapsed .collapse-row {
-  justify-content: center;
-  padding: 0;
-}
-
-.is-collapsed .collapse-row span {
-  display: none;
-}
-
-.conn-card {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 11px;
-  margin-bottom: 10px;
-  overflow: hidden;
-}
-
-.conn-row {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.conn-dot {
-  color: var(--green);
-}
-
-.conn-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text);
-  white-space: nowrap;
-}
-
-.conn-meta {
-  margin: 4px 0 8px;
-  font-size: 10.5px;
-  color: var(--text-3);
-  white-space: nowrap;
-}
-
-.conn-btn {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 11px;
-  color: var(--primary);
-  font-weight: 500;
-}
-
-.user {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 4px 6px;
-}
-
-.avatar {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: var(--surface-3);
-  color: var(--text-2);
-  display: grid;
-  place-items: center;
-  font-size: 12px;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-
-.user-text {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.3;
-  min-width: 0;
-}
-
-.user-text strong {
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.user-text span {
-  font-size: 10.5px;
-  color: var(--text-3);
-  white-space: nowrap;
-}
-
-.icon-mini {
-  margin-left: auto;
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  display: grid;
-  place-items: center;
-  color: var(--text-3);
-}
-
-.icon-mini:hover {
-  background: var(--surface-3);
-  color: var(--text);
 }
 
 .main {
@@ -705,34 +480,6 @@ h1 {
   margin-left: auto;
 }
 
-.is-collapsed .brand-text,
-.is-collapsed .nav-label,
-.is-collapsed .nav-text,
-.is-collapsed .live-tag,
-.is-collapsed .conn-card,
-.is-collapsed .user-text,
-.is-collapsed .collapse-btn {
-  display: none;
-}
-
-.is-collapsed .brand {
-  justify-content: center;
-  padding: 0;
-}
-
-.is-collapsed .nav-item {
-  justify-content: center;
-  padding: 0;
-}
-
-.is-collapsed .nav-group + .nav-group {
-  margin-top: 10px;
-}
-
-.is-collapsed .user {
-  justify-content: center;
-}
-
 @media (max-width: 1280px) {
   .actions {
     gap: 6px;
@@ -754,9 +501,7 @@ h1 {
   .brand-text,
   .nav-label,
   .nav-text,
-  .live-tag,
-  .conn-card,
-  .user-text {
+  .live-tag {
     display: none;
   }
 
@@ -764,6 +509,33 @@ h1 {
   .nav-item {
     justify-content: center;
     padding: 0;
+  }
+
+  /* 窄屏只剩图标，悬停/键盘聚焦时用 data-label 补出模块名 */
+  .nav-item::after {
+    content: attr(data-label);
+    position: absolute;
+    left: calc(100% + 10px);
+    top: 50%;
+    transform: translateY(-50%) translateX(-4px);
+    padding: 5px 9px;
+    border-radius: 6px;
+    background: #0c1526;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    box-shadow: 0 8px 22px rgba(8, 15, 30, 0.28);
+    z-index: 80;
+  }
+
+  .nav-item:hover::after,
+  .nav-item:focus-visible::after {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
   }
 
   .content {
@@ -775,7 +547,6 @@ h1 {
 .page-heading p { margin-top: 8px; }
 .page-status { display: flex; align-items: center; gap: 7px; color: var(--text-3); font-size: 12px; white-space: nowrap; }
 .page-status .dot { color: var(--green); }
-.conn-card { background: transparent; border-color: transparent; padding: 10px 8px; }
 .topbar { background: var(--surface); backdrop-filter: none; }
 @media (max-width: 1180px) { .content { padding: 28px; } }
 @media (max-width: 900px) {
@@ -787,7 +558,6 @@ h1 {
 @media (max-width: 680px) {
   .shell { --sidebar-w: 60px; }
   .brand { padding: 0; }
-  .collapse-btn, .sidebar-foot .user, .collapse-row { display: none; }
   .nav { padding: 16px 6px; }
   .nav-item { padding: 0; }
   .topbar { padding: 12px; }

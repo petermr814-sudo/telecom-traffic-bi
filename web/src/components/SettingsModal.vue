@@ -56,7 +56,7 @@ function reset() {
         <h4>数据连接</h4>
         <span class="chip" :class="dataMode === 'api' ? 'chip--green' : 'chip--blue'">
           <span class="dot" />
-          {{ dataMode === 'api' ? '真实接口' : 'Mock 演示数据' }}
+          {{ dataMode === 'api' ? '真实接口' : '本地模拟' }}
         </span>
       </div>
       <p class="hint">
