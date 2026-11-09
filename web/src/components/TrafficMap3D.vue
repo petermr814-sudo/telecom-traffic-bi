@@ -45,6 +45,9 @@ const geographyLabels = [
   { name: '华北平原', coords: [115.5, 36] as Coordinate }
 ]
 const raycaster = new THREE.Raycaster()
+const terrainRay = new THREE.Ray()
+const terrainPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0))
+const terrainProbe = new THREE.Vector3()
 const pointer = new THREE.Vector2()
 const projected = new THREE.Vector3()
 const markerObjects = new Map<string, { group: THREE.Group; height: number; center: THREE.Vector3 }>()
@@ -150,10 +153,14 @@ async function loadCityTerrain() {
       detailCache.delete(oldest)
     }
     citySurface = mesh
+    // Blend detail only while it covers the entire ground viewport. Its rectangular
+    // tile edge must never enter the picture; wider views use continuous terrain.
+    const material = mesh.material as THREE.MeshStandardMaterial
+    material.transparent = true
     land.add(mesh)
     activeDem = dem
     terrainDetail.value = name as string
-    terrainStatus.value = '城市周边 DEM 地形 · 垂直夸张 ×6'
+    terrainStatus.value = '真实高程地形 · 垂直夸张 ×6'
     redrawBoundaries(); updateMarkers(); dirty = true
     wake()
   } catch (e) {
@@ -163,6 +170,35 @@ async function loadCityTerrain() {
       terrainStatus.value = '城市精细地形载入失败 · 当前使用全国地形'
     }
   }
+}
+function updateTerrainDetail() {
+  if (!nationalSurface) return
+  nationalSurface.visible = true
+  const info = props.selected && manifest?.cities[props.selected]
+  if (!citySurface || !info) return
+  const [west, south, east, north] = info.bounds
+  // The floor is the lowest visible surface. Including the camera's horizontal
+  // position bounds the entire ray segment, including elevated mountain peaks.
+  terrainPlane.constant = .25
+  terrainRay.origin.copy(camera.position)
+  let margin = Math.min(camera.position.x - west, east - camera.position.x, -camera.position.z - south, north + camera.position.z)
+  for (const x of [-1, 1]) for (const y of [-1, 1]) {
+    terrainProbe.set(x, y, .5).unproject(camera)
+    terrainRay.direction.copy(terrainProbe).sub(camera.position).normalize()
+    if (terrainRay.direction.y >= 0 || !terrainRay.intersectPlane(terrainPlane, terrainProbe)) {
+      margin = 0
+      break
+    }
+    margin = Math.min(margin, terrainProbe.x - west, east - terrainProbe.x, -terrainProbe.z - south, north + terrainProbe.z)
+  }
+  const opacity = THREE.MathUtils.smoothstep(margin, 0, Math.min(east - west, north - south) * .15)
+  const material = citySurface.material as THREE.MeshStandardMaterial
+  material.opacity = opacity
+  material.depthWrite = opacity === 1
+  citySurface.visible = opacity > .001
+  // Once detail fills the view, avoid intersecting coarse/fine triangles. The
+  // national mesh returns before any detail edge can enter the viewport.
+  nationalSurface.visible = opacity < 1
 }
 function updateMarkers() {
   disposeGroup(markerGroup)
@@ -304,6 +340,8 @@ function tick(now: number) {
   if (controls.update()) dirty = true
   if (dirty) {
     land.updateMatrixWorld(true)
+    camera.updateMatrixWorld()
+    updateTerrainDetail()
     renderer.render(scene, camera)
     renderLabels()
     renderGeographyLabels()
