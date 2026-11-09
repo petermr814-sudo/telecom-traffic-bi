@@ -277,7 +277,7 @@ onUnmounted(() => {
         <div class="filters">
           <div class="search">
             <Icon name="search" :size="14" />
-            <input v-model="q" class="input" placeholder="搜索小区 / 城市 / 编号" aria-label="搜索小区" />
+            <input v-model="q" v-type-reveal class="input" placeholder="搜索小区 / 城市 / 编号" aria-label="搜索小区" />
           </div>
           <div v-seg-mask class="seg seg--sm">
             <button class="seg__item" :class="{ 'is-active': gen === 'all' }" @click="gen = 'all'">全部</button>
@@ -292,7 +292,7 @@ onUnmounted(() => {
         </div>
       </template>
 
-      <div class="table-wrap">
+      <div class="table-wrap" v-swap-reveal>
         <table class="table table--compact">
           <thead>
             <tr>
@@ -391,12 +391,13 @@ onUnmounted(() => {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   text-align: left;
-  box-shadow: var(--shadow-sm);
-  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+  box-shadow: none;
+  filter: drop-shadow(0 6px 18px rgba(13, 22, 41, 0.05));
+  transition: border-color 0.16s ease, filter 0.16s ease, transform 0.16s ease;
   position: relative;
 }
 
-.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); transform: translateY(-1px) scale(1.01); }
+.stat:hover { border-color: var(--border-strong); filter: drop-shadow(0 14px 34px rgba(13, 22, 41, 0.12)); transform: translateY(-1px) scale(1.01); }
 .stat.is-active { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary) inset; }
 
 .stat-icon { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; flex-shrink: 0; }

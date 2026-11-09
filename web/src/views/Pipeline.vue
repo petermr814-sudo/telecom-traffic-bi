@@ -147,7 +147,7 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
         <template #actions>
           <button class="btn btn--sm" :disabled="busy" @click="runAll"><Icon name="play" :size="13" />重跑失败</button>
         </template>
-        <div class="table-wrap">
+        <div class="table-wrap" v-swap-reveal>
           <table class="table table--compact">
             <thead>
               <tr>

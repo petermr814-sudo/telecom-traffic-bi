@@ -241,7 +241,7 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
               全部小区<Icon name="chevron-right" :size="12" />
             </button>
           </template>
-          <div class="table-wrap">
+          <div class="table-wrap" v-swap-reveal>
             <table class="table table--compact">
               <thead>
                 <tr>

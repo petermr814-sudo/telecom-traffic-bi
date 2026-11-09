@@ -151,7 +151,7 @@ const regionRows = computed(() => {
           <template v-else>
             <div class="overview-heading"><div><div class="eyebrow">CITY EXPLORER</div><h3>从全国，深入一座城</h3></div><span>{{ cities.length }}<small> 城市</small></span></div>
             <p class="overview-desc">选择城市，让数据与空间一起聚焦。</p>
-            <div class="city-search"><Icon name="search" :size="15" /><input v-model="query" aria-label="搜索地图城市" placeholder="搜索城市、省份或大区" /><button v-if="query" aria-label="清空城市搜索" @click="query = ''"><Icon name="close" :size="13" /></button></div>
+            <div class="city-search"><Icon name="search" :size="15" /><input v-model="query" v-type-reveal aria-label="搜索地图城市" placeholder="搜索城市、省份或大区" /><button v-if="query" aria-label="清空城市搜索" @click="query = ''"><Icon name="close" :size="13" /></button></div>
             <div class="ranking-caption"><span>{{ query ? `找到 ${filtered.length} 座城市` : '重点城市排名' }}</span><span>{{ metric === 'growth' ? '所在省同比' : `${rangeLabel}${metrics.find(m => m.key === metric)?.label}` }}</span></div>
             <div v-if="error" class="city-empty" role="alert">城市数据加载失败<button @click="run">重新加载</button></div>
             <div v-else-if="loading && !data" class="city-empty" role="status">正在读取城市数据…</div>
@@ -183,7 +183,7 @@ const regionRows = computed(() => {
 .traffic-explorer { min-width: 0; }
 .refresh-error { padding: 10px 24px; color: #efc58b; background: #493a26; font-size: 12px; }
 .refresh-error button { text-decoration: underline; margin-left: 12px; }
-.atlas { overflow: hidden; border-radius: 18px; background: #ffffff; box-shadow: 0 8px 30px #132b4310; color: #34453e; }
+.atlas { overflow: hidden; border-radius: 18px; background: #ffffff; filter: drop-shadow(0 8px 30px rgba(19, 43, 67, 0.08)); color: #34453e; }
 .atlas-header { display: flex; justify-content: space-between; align-items: center; padding: 22px 25px; gap: 18px; border-bottom: 1px solid #e2e7e2; background: #ffffff; }
 .atlas-title { display: flex; align-items: center; gap: 13px; }
 .atlas-icon { color: #72897c; width: 39px; height: 39px; border: 1px solid #d8e1d9; border-radius: 11px; display: grid; place-items: center; }
@@ -264,7 +264,7 @@ const regionRows = computed(() => {
 .analysis-heading h3 { margin-top: 7px; font-size: 17px; font-weight: 550; }
 .analysis-heading > span { font-size: 11px; color: var(--text-3); }
 .analysis-charts { display: grid; grid-template-columns: 1.3fr .85fr 1.1fr; gap: 18px; }
-.analysis-charts :deep(.panel) { border-color: #e2e9e0; border-radius: 14px; box-shadow: 0 6px 20px #233d3008; }
+.analysis-charts :deep(.panel) { border-color: #e2e9e0; border-radius: 14px; }
 .analysis-charts :deep(.panel-head) { padding: 20px 20px 14px; border-bottom: 1px solid #eef2ea; }
 .analysis-charts :deep(.panel-title) { font-size: 15px; letter-spacing: .01em; }
 .analysis-charts :deep(.panel-body) { padding: 16px 14px 18px; }

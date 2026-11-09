@@ -116,18 +116,36 @@ svg {
 }
 
 /* ---------- card / panel ---------- */
+/* Apple 设计语言：连续曲率方圆角（superellipse），替代圆弧 border-radius。
+   遮罩会裁掉 box-shadow，阴影改用 filter: drop-shadow 跟随方圆角轮廓 */
+.panel,
+.card,
+.kpi,
+.atlas,
+.stats,
+.stat,
+.national-insight,
+.prov-table-panel,
+.prov-detail-panel,
+.rt {
+  -webkit-mask-image: var(--squircle-mask);
+  mask-image: var(--squircle-mask);
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+}
+
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
+  filter: drop-shadow(0 10px 30px rgba(13, 22, 41, 0.07));
 }
 
 .panel {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
+  filter: drop-shadow(0 10px 30px rgba(13, 22, 41, 0.07));
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -449,6 +467,42 @@ svg {
 
 .input::placeholder {
   color: var(--text-3);
+}
+
+/* ---------- 数据变动与输入动效 ---------- */
+.swap-fade {
+  filter: blur(6px);
+  opacity: 0.4;
+  transition: filter 0.1s ease, opacity 0.1s ease;
+}
+.type-reveal {
+  position: relative;
+  display: inline-flex;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.type-reveal__input {
+  color: transparent !important;
+  caret-color: var(--text);
+  width: 100%;
+}
+.type-reveal__text {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  white-space: pre;
+  overflow: hidden;
+  color: inherit;
+}
+@media (prefers-reduced-motion: reduce) {
+  .swap-fade {
+    filter: none;
+    opacity: 1;
+    transition: none;
+  }
 }
 
 /* ---------- misc ---------- */

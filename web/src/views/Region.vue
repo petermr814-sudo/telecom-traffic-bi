@@ -160,12 +160,12 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
         <div class="filters">
           <div class="search">
             <Icon name="search" :size="14" />
-            <input v-model="q" class="input" placeholder="搜索省份或大区" aria-label="搜索省份" />
+            <input v-model="q" v-type-reveal class="input" placeholder="搜索省份或大区" aria-label="搜索省份" />
           </div>
           <Select v-model="regionFilter" class="select" size="sm" :options="regionOptions" aria-label="按大区筛选" />
         </div>
       </template>
-      <div class="table-wrap table-scroll">
+      <div class="table-wrap table-scroll" v-swap-reveal>
         <table class="table table--compact">
           <thead>
             <tr>

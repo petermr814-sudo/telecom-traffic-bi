@@ -283,7 +283,7 @@ onUnmounted(() => {
         </div>
         <Disclosure title="查看当天 24 小时明细" sub="按流量排名或时间顺序逐项核对">
           <div class="detail-table-head"><span>{{ selected.date.format('YYYY-MM-DD') }} · 24 条读数</span><div v-seg-mask class="seg seg--sm"><button class="seg__item" :class="{ 'is-active': rankSort === 'flow' }" @click="rankSort = 'flow'">按流量</button><button class="seg__item" :class="{ 'is-active': rankSort === 'hour' }" @click="rankSort = 'hour'">按时间</button></div></div>
-          <div class="table-wrap"><table class="table"><thead><tr><th>小时</th><th class="num">流量</th><th class="num">占当天</th></tr></thead><tbody><tr v-for="row in ranked" :key="row.hour"><td>{{ hourLabel(row.hour) }}</td><td class="num">{{ fmtBytes(row.value) }}</td><td class="num">{{ row.share.toFixed(1) }}%</td></tr></tbody></table></div>
+          <div class="table-wrap" v-swap-reveal><table class="table"><thead><tr><th>小时</th><th class="num">流量</th><th class="num">占当天</th></tr></thead><tbody><tr v-for="row in ranked" :key="row.hour"><td>{{ hourLabel(row.hour) }}</td><td class="num">{{ fmtBytes(row.value) }}</td><td class="num">{{ row.share.toFixed(1) }}%</td></tr></tbody></table></div>
         </Disclosure>
       </section>
       <div v-else class="day-placeholder"><Icon name="calendar" :size="20" /><div><strong>先看整周规律，再看一天的细节</strong><p>点击热力图左侧的日期，即可展开当天统计卡片和详细图表。</p></div></div>

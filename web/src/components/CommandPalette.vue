@@ -195,6 +195,7 @@ watch(
             <input
               ref="input"
               v-model="q"
+              v-type-reveal
               placeholder="搜索页面、区域或操作…"
               aria-label="搜索页面、区域或操作"
               @keydown="onKey"
