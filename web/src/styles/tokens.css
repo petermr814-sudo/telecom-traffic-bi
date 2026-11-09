@@ -29,7 +29,13 @@
   --radius: 18px;
   --radius-sm: 8px;
   --radius-xs: 6px;
-  --font: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  /* 二次贝塞尔缓动：easeOutQuad / easeInQuad 的精确三次表示 */
+  --ease-quad-out: cubic-bezier(0.333, 0.667, 0.667, 1);
+  --ease-quad-in: cubic-bezier(0.333, 0, 0.667, 0.333);
+  /* MiSans（小米开源字体，本地 woff2 子集，见 public/fonts/misans） */
+  --font: "MiSans VF", "MiSans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --brand-ink: #1e2328;
+  --brand-teal: #148291;
   --mono: "SFMono-Regular", "JetBrains Mono", Consolas, "Liberation Mono", monospace;
   --sidebar-w: 208px;
   --topbar-h: 72px;

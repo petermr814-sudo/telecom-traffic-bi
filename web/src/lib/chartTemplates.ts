@@ -1,7 +1,7 @@
 // Visual adaptations of Lieflat Charts F5, F10 and F14 for the existing ECharts runtime.
 // Source: lieflat-charts/templates/basics-gallery.html and color/basics-porcelain.html.
 // PolyForm Noncommercial 1.0.0: /third-party/lieflat-charts-LICENSE.txt
-import { axisLabel, C, splitLine, tooltipBase } from './chart'
+import { axisLabel, C, CHART_FONT, splitLine, tooltipBase } from './chart'
 
 export function readableUnit(value: number) {
   if (!(value > 0)) return 1
@@ -47,7 +47,7 @@ export function tickRowsOption(rows: TickRow[], unit: number) {
           if ((k + 1) % 5 === 0) children.push({ type: 'circle', shape: { cx: x, cy: y + 12, r: 1 }, style: { fill: '#b0bed0' } })
         }
         children.push({ type: 'text', x: api.coord([value, index])[0] + 9, y,
-          style: { text: rows[index]?.label ?? '', fill: index === 0 ? C.text : C.text2, font: '600 12px "Segoe UI", "Microsoft YaHei", sans-serif', verticalAlign: 'middle' } })
+          style: { text: rows[index]?.label ?? '', fill: index === 0 ? C.text : C.text2, font: `600 12px ${CHART_FONT}`, verticalAlign: 'middle' } })
         children.push({ type: 'rect', shape: { x: left, y: y - 14, width: Math.max(20, params.coordSys.width), height: 30 }, style: { fill: 'rgba(0,0,0,0)' } })
         return { type: 'group', children }
       },
@@ -224,7 +224,7 @@ export function utilizationHistogram(values: number[], warn: number, congest: nu
             const y = api.coord([0, k + .5])[1]
             children.push({ type: 'line', shape: { x1: left + 2, x2: right - 2, y1: y, y2: y }, style: { stroke: params.dataIndex === peak ? C.primary : '#7096d1', lineWidth: 1.25 } })
           }
-          if (params.dataIndex === peak) children.push({ type: 'text', x: (left + right) / 2, y: top - 10, style: { text: String(count), fill: C.primary, font: '700 12px "Segoe UI", sans-serif', align: 'center', verticalAlign: 'bottom' } })
+          if (params.dataIndex === peak) children.push({ type: 'text', x: (left + right) / 2, y: top - 10, style: { text: String(count), fill: C.primary, font: `700 12px ${CHART_FONT}`, align: 'center', verticalAlign: 'bottom' } })
           children.push({ type: 'rect', shape: { x: left, y: params.coordSys.y, width: Math.max(1, right - left), height: params.coordSys.height }, style: { fill: 'rgba(0,0,0,0)' } })
           return { type: 'group', children }
         },

@@ -52,17 +52,9 @@ onUnmounted(() => {
         :title="ui.sidebarCollapsed ? '点击展开侧栏' : undefined"
         @click="ui.sidebarCollapsed && (ui.sidebarCollapsed = false)"
       >
-        <div class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="white" stroke-width="2.1" stroke-linecap="round">
-            <path d="M4 17v-4" />
-            <path d="M8.6 17V9.5" />
-            <path d="M13.2 17V6" />
-            <path d="M17.8 17v-2.4" />
-            <path d="M3 20h18" />
-          </svg>
-        </div>
+        <img class="brand-mark" src="/brand/telescope-mark-128.png" width="34" height="34" alt="" decoding="async" />
         <div class="brand-text">
-          <strong>TeleScope</strong>
+          <strong><span class="brand-tele">Tele</span><span class="brand-scope">Scope</span></strong>
           <span>电信流量运营平台</span>
         </div>
         <button class="collapse-btn" :aria-label="ui.sidebarCollapsed ? '展开侧栏' : '收起侧栏'" @click.stop="ui.sidebarCollapsed = !ui.sidebarCollapsed">
@@ -225,14 +217,12 @@ onUnmounted(() => {
 }
 
 .brand-mark {
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  background: var(--primary);
-  display: grid;
-  place-items: center;
+  width: 34px;
+  height: 34px;
+  display: block;
   flex-shrink: 0;
-  box-shadow: 0 6px 14px rgba(31, 94, 255, 0.28);
+  object-fit: contain;
+  filter: drop-shadow(0 2px 5px rgba(20, 130, 145, 0.14));
   transition: transform 0.16s ease;
 }
 
@@ -244,8 +234,20 @@ onUnmounted(() => {
 }
 
 .brand-text strong {
-  font-size: 15px;
-  letter-spacing: -0.02em;
+  display: flex;
+  align-items: baseline;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  color: var(--brand-ink);
+}
+
+.brand-tele {
+  color: var(--brand-ink);
+}
+
+.brand-scope {
+  color: var(--brand-teal);
 }
 
 .brand-text span {
@@ -774,7 +776,6 @@ h1 {
 .page-status { display: flex; align-items: center; gap: 7px; color: var(--text-3); font-size: 12px; white-space: nowrap; }
 .page-status .dot { color: var(--green); }
 .conn-card { background: transparent; border-color: transparent; padding: 10px 8px; }
-.brand-mark { box-shadow: none; }
 .topbar { background: var(--surface); backdrop-filter: none; }
 @media (max-width: 1180px) { .content { padding: 28px; } }
 @media (max-width: 900px) {

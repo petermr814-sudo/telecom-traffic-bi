@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import * as echarts from 'echarts'
 import SkeletonLoader from './SkeletonLoader.vue'
+import { CHART_FONT } from '@/lib/chart'
 
 const props = withDefaults(defineProps<{ option: echarts.EChartsOption; height?: string; replaceMerge?: string[]; loading?: boolean; enterAnimation?: boolean }>(), {
   height: '260px',
@@ -37,7 +38,10 @@ function toPlain(value: any): any {
 
 function render() {
   if (!chart.value || (!painted.value && props.loading)) return
-  const payload = toPlain(props.option)
+  // 顶层 textStyle 是全局默认：图例、标线、markPoint 等没单独写 fontFamily 的文本
+  // 也统一用 MiSans，避免画布里混入 ECharts 默认字体；option 自己的 textStyle 仍然优先。
+  const plain = toPlain(props.option)
+  const payload = { ...plain, textStyle: { fontFamily: CHART_FONT, ...(plain.textStyle ?? {}) } }
   if (!payload.series) return
   // 加载过程由骨架屏呈现：首次渲染默认直接落定，避免图形展开形成大面积遮罩；
   // 动效画廊（enterAnimation）与后续更新保留 option 自身的动画配置
@@ -104,7 +108,10 @@ onUnmounted(() => {
 
 function replay(event?: Event) {
   if (!painted.value || !chart.value) return
-  const payload = toPlain(props.option)
+  // 顶层 textStyle 是全局默认：图例、标线、markPoint 等没单独写 fontFamily 的文本
+  // 也统一用 MiSans，避免画布里混入 ECharts 默认字体；option 自己的 textStyle 仍然优先。
+  const plain = toPlain(props.option)
+  const payload = { ...plain, textStyle: { fontFamily: CHART_FONT, ...(plain.textStyle ?? {}) } }
   if (!payload.series) return
   const duration = Math.max(300, Math.min(4000, (event as CustomEvent)?.detail?.duration ?? 0))
   if (duration) {

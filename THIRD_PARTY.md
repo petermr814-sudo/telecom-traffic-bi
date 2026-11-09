@@ -20,6 +20,14 @@
 | puppeteer-core | Apache-2.0 | 截图/回归脚本（不参与打包） |
 | pnpm | MIT | 包管理 |
 
+## 字体
+
+界面与图表统一使用 MiSans（小米，官方声明免费商用）。字体文件是 npm 包 `misans@5.0.0` 提供的 woff2 unicode-range 子集，放在 `web/public/fonts/misans/`，由 `MiSansVF.min.css` 按需加载，不依赖外网；该分发包以 Apache-2.0 发布，许可副本为同目录的 `LICENSE.txt`。字体授权以小米官方说明为准：<https://hyperos.mi.com/font/zh/download/>。
+
+## 品牌素材
+
+侧栏标识、favicon 与文档用组合标位于 `web/public/brand/`，由用户提供的 TeleScope 标识去掉白底后生成；页面中的字标沿用 MiSans 排版，颜色取自标识本身（墨色 `#1e2328`、青色 `#148291`）。
+
 ## 地图数据
 
 `web/public/geo/china.json` 来自阿里云 DataV.GeoAtlas 的中国省级 GeoJSON（`https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json`）。3D 地图保留省域几何，纬度 18° 以南的独立岛礁多边形绘制在「南海诸岛」插图中。
