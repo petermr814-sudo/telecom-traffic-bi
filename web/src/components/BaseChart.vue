@@ -124,7 +124,7 @@ defineExpose({ chart, getChart: () => chart.value, replay })
 <template>
   <div ref="host" class="chart-box" :style="{ height }" :aria-busy="loading || !painted" @chart:replay="replay">
     <div ref="el" class="chart-surface" :style="{ visibility: painted ? 'visible' : 'hidden' }" />
-    <Transition name="skeleton">
+    <Transition name="skeleton" :duration="300">
       <SkeletonLoader v-if="!painted" class="chart-loading" variant="chart" compact />
     </Transition>
   </div>
