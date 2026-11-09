@@ -116,22 +116,20 @@ svg {
 }
 
 /* ---------- card / panel ---------- */
-/* Apple 设计语言：连续曲率方圆角（superellipse），替代圆弧 border-radius。
-   遮罩会裁掉 box-shadow，阴影改用 filter: drop-shadow 跟随方圆角轮廓 */
+/* Apple 连续曲率方圆角：corner-shape 与 border-radius 走同一套圆角几何，边框与
+   裁切轮廓一致；不支持 corner-shape 的浏览器回退普通圆角。overflow: hidden 把
+   内容（表格、画布）裁进圆角内。内部分段（.stat）不参与，由外层 .stats 裁切。 */
 .panel,
 .card,
 .kpi,
 .atlas,
 .stats,
-.stat,
 .national-insight,
 .prov-table-panel,
 .prov-detail-panel,
 .rt {
-  -webkit-mask-image: var(--squircle-mask);
-  mask-image: var(--squircle-mask);
-  -webkit-mask-size: 100% 100%;
-  mask-size: 100% 100%;
+  overflow: hidden;
+  corner-shape: squircle;
 }
 
 .card {
