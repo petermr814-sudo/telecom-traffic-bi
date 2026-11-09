@@ -20,6 +20,13 @@ docs/map-check/
 docs/hourly-check/
 .playwright-cli/
 
+# 本地调试截图与探针
+web/prov-*.png
+web/tools/probe-*.mjs
+web/tools/_*.mjs
+_*.png
+_ocr.ps1
+
 # 系统文件
 .DS_Store
 Thumbs.db
