@@ -397,7 +397,8 @@ onUnmounted(() => window.removeEventListener('telco:export', exportCsv))
 .src-body strong { font-size: 13px; }
 .src-body .mono, .src-detail { font-size: 11px; }
 .sources li { padding: 16px 0; }
-.disclosure :deep(.panel) { border: 0; box-shadow: none; border-radius: 0; }
+/* .panel 默认带 filter 投影；两列仅隔 24px，投影会在间隙里叠成一条灰竖带，所以一并去掉 */
+.disclosure :deep(.panel) { border: 0; border-radius: 0; box-shadow: none; filter: none; }
 .disclosure :deep(.panel-head) { padding-left: 0; padding-right: 0; }
 .disclosure :deep(.panel-body) { padding-left: 0; padding-right: 0; }
 @media (max-width: 1120px) { .grid--mid { grid-template-columns: 1fr; } .dag { flex-wrap: wrap; gap: 14px; } .stage { flex-basis: 30%; min-width: 150px; } }
