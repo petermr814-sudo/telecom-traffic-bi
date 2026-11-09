@@ -131,11 +131,18 @@ async function copyLink() {
                 </div>
                 <div class="info-row">
                   <span class="info-row__label"><Icon name="globe" :size="13" />当前区域</span>
-                  <button class="info-row__value info-row__value--btn" @click="regionOpen = !regionOpen">
+                  <button
+                    class="info-row__value info-row__value--btn"
+                    :class="{ 'is-open': regionOpen }"
+                    :aria-expanded="regionOpen"
+                    aria-haspopup="listbox"
+                    aria-controls="region-options"
+                    @click="regionOpen = !regionOpen"
+                  >
                     {{ regionLabel }}<Icon name="chevron-down" :size="12" />
                   </button>
                 </div>
-                <div ref="regionWrap" class="region-grid__collapse" :style="{ height: regionH }">
+                <div id="region-options" ref="regionWrap" class="region-grid__collapse" :style="{ height: regionH }">
                   <div class="region-grid__inner">
                     <div class="region-grid" role="listbox">
                       <button
@@ -366,6 +373,20 @@ async function copyLink() {
 .info-row__value--btn {
   color: var(--primary);
   background: transparent;
+  padding: 2px 5px;
+  margin: -2px -5px;
+  border-radius: 5px;
+  transition: background-color 0.16s ease, color 0.16s ease;
+}
+.info-row__value--btn:hover,
+.info-row__value--btn.is-open {
+  background: var(--primary-soft);
+}
+.info-row__value--btn svg {
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.info-row__value--btn.is-open svg {
+  transform: rotate(180deg);
 }
 .info-row__hint {
   color: var(--text-3);

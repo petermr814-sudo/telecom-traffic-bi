@@ -75,6 +75,16 @@ try {
   })
   const regionHeights = new Set(regionSamples.map(s => Math.round(s.h * 10))).size
   check('区域菜单展开有拉伸动画', regionHeights >= 10 && regionSamples[regionSamples.length - 1].h > 50, { frames: regionHeights, end: regionSamples[regionSamples.length - 1].h })
+  const arrowOpen = await page.evaluate(() => {
+    const btn = document.querySelector('.info-row__value--btn')
+    const svg = btn?.querySelector('svg')
+    return {
+      expanded: btn?.getAttribute('aria-expanded'),
+      transform: svg ? getComputedStyle(svg).transform : '',
+      background: btn ? getComputedStyle(btn).backgroundColor : ''
+    }
+  })
+  check('区域按钮展开时箭头旋转且有展开态', arrowOpen.expanded === 'true' && arrowOpen.transform !== 'none' && arrowOpen.background !== 'rgba(0, 0, 0, 0)', arrowOpen)
   await sleep(200)
   await page.evaluate(() => [...document.querySelectorAll('.region-grid__item')].find(el => el.textContent.trim() === '华东').click())
   await sleep(250)
@@ -83,6 +93,12 @@ try {
   await sleep(300)
   const regionLabel = await page.evaluate(() => document.querySelector('.info-row__value--btn')?.textContent?.trim())
   check('区域选择后标签即时更新', regionLabel === '华东', regionLabel)
+  const arrowClosed = await page.evaluate(() => {
+    const btn = document.querySelector('.info-row__value--btn')
+    const svg = btn?.querySelector('svg')
+    return { expanded: btn?.getAttribute('aria-expanded'), transform: svg ? getComputedStyle(svg).transform : '' }
+  })
+  check('区域按钮收起后箭头复位', arrowClosed.expanded === 'false' && arrowClosed.transform === 'none', arrowClosed)
 
   // 从信息栏跳转告警中心：弹窗打开时面板保留，退出弹窗后面板仍在
   await page.evaluate(() => {
